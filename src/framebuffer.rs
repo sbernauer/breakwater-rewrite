@@ -6,6 +6,7 @@ pub struct FrameBuffer {
     buffer: UnsafeCell<Vec<u32>>,
 }
 
+// Nothing to see here, I don't know what I'm doing ¯\_(ツ)_/¯
 unsafe impl Sync for FrameBuffer {}
 
 impl FrameBuffer {
@@ -20,18 +21,18 @@ impl FrameBuffer {
     }
 
     #[inline(always)]
-    pub fn get(&self, x: usize, y: usize) -> u32 {
+    pub fn get(&self, x: usize, y: usize) -> Option<u32> {
         if x < self.width && y < self.height {
-            unsafe { (*self.buffer.get())[x + y * self.width] }
+            unsafe { Some((*self.buffer.get())[x + y * self.width]) }
         } else {
-            0
+            None
         }
     }
 
-    // #[inline(always)]
-    // pub fn get_unchecked(&self, x: usize, y: usize) -> u32 {
-    //     unsafe { (*self.buffer.get())[x + y * self.width] }
-    // }
+    #[inline(always)]
+    pub fn get_unchecked(&self, x: usize, y: usize) -> u32 {
+        unsafe { (*self.buffer.get())[x + y * self.width] }
+    }
 
     #[inline(always)]
     pub fn set(&self, x: usize, y: usize, rgba: u32) {

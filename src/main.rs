@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     loop {
-        println!("{}", fb.get(0, 0));
+        println!("{}", fb.get_unchecked(0, 0));
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }

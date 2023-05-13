@@ -208,21 +208,23 @@ pub async fn handle_connection(
 
                                     // End of command to read Pixel value
                                     if buffer[i] == b'\n' && x < fb.width && y < fb.height {
-                                        match stream
-                                            .write_all(
-                                                format!(
-                                                    "PX {} {} {:06x}\n",
-                                                    // We don't want to return the actual (absolute) coordinates, the client should also get the result offseted
-                                                    x - x_offset,
-                                                    y - y_offset,
-                                                    fb.get(x, y).to_be() >> 8
+                                        if let Some(rgb) = fb.get(x, y) {
+                                            match stream
+                                                .write_all(
+                                                    format!(
+                                                        "PX {} {} {:06x}\n",
+                                                        // We don't want to return the actual (absolute) coordinates, the client should also get the result offseted
+                                                        x - x_offset,
+                                                        y - y_offset,
+                                                        rgb.to_be() >> 8
+                                                    )
+                                                    .as_bytes(),
                                                 )
-                                                .as_bytes(),
-                                            )
-                                            .await
-                                        {
-                                            Ok(_) => (),
-                                            Err(_) => continue,
+                                                .await
+                                            {
+                                                Ok(_) => (),
+                                                Err(_) => continue,
+                                            }
                                         }
                                     }
                                 }
