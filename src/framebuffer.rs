@@ -29,10 +29,10 @@ impl FrameBuffer {
         }
     }
 
-    #[inline(always)]
-    pub fn get_unchecked(&self, x: usize, y: usize) -> u32 {
-        unsafe { (*self.buffer.get())[x + y * self.width] }
-    }
+    // #[inline(always)]
+    // pub fn get_unchecked(&self, x: usize, y: usize) -> u32 {
+    //     unsafe { (*self.buffer.get())[x + y * self.width] }
+    // }
 
     #[inline(always)]
     pub fn set(&self, x: usize, y: usize, rgba: u32) {
