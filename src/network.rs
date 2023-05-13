@@ -22,18 +22,18 @@ OFFSET x y: Apply offset (x,y) to all further pixel draws on this connection
 ".as_bytes();
 const LOOP_LOOKAHEAD: usize = "PX 1234 1234 rrggbbaa\n".len();
 
-pub struct Network<'a> {
-    listen_address: &'a str,
+pub struct Network {
+    listen_address: String,
     fb: Arc<FrameBuffer>,
 }
 
-impl<'a> Network<'a> {
-    pub fn new(listen_address: &'a str, fb: Arc<FrameBuffer>) -> Self {
+impl Network {
+    pub fn new(listen_address: String, fb: Arc<FrameBuffer>) -> Self {
         Network { listen_address, fb }
     }
 
     pub async fn listen(&self) -> tokio::io::Result<()> {
-        let listener = TcpListener::bind(self.listen_address).await?;
+        let listener = TcpListener::bind(&self.listen_address).await?;
         info!(
             "Listening for Pixelflut connections on {}",
             self.listen_address
