@@ -1,0 +1,8 @@
+[package]
+name = "breakwater-rewrite"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4"
+tokio = { version = "1.28", features = ["rt-multi-thread", "net", "io-util", "macros", "time"] }
