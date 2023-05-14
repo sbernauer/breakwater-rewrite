@@ -119,12 +119,14 @@ pub async fn parse_pixelflut_commands(
                                         // };
                                         // let rgba = u32::from_str_radix(str, 16).unwrap();
 
-                                        let rgba: u32 = (from_hex_char(buffer[i - 3]) as u32) << 20
-                                            | (from_hex_char(buffer[i - 2]) as u32) << 16
-                                            | (from_hex_char(buffer[i - 5]) as u32) << 12
-                                            | (from_hex_char(buffer[i - 4]) as u32) << 8
-                                            | (from_hex_char(buffer[i - 7]) as u32) << 4
-                                            | (from_hex_char(buffer[i - 6]) as u32);
+                                        let rgba: u32 = (from_hex_char_lookup(buffer[i - 3])
+                                            as u32)
+                                            << 20
+                                            | (from_hex_char_lookup(buffer[i - 2]) as u32) << 16
+                                            | (from_hex_char_lookup(buffer[i - 5]) as u32) << 12
+                                            | (from_hex_char_lookup(buffer[i - 4]) as u32) << 8
+                                            | (from_hex_char_lookup(buffer[i - 7]) as u32) << 4
+                                            | (from_hex_char_lookup(buffer[i - 6]) as u32);
 
                                         fb.set(x, y, rgba);
                                         if cfg!(feature = "count_pixels") {
@@ -138,12 +140,13 @@ pub async fn parse_pixelflut_commands(
                                         last_byte_parsed = i + 8;
                                         i += 9; // We can advance one byte more than normal as we use continue and therefore not get incremented at the end of the loop
 
-                                        let rgba: u32 = (from_hex_char(buffer[i - 5]) as u32) << 20
-                                            | (from_hex_char(buffer[i - 4]) as u32) << 16
-                                            | (from_hex_char(buffer[i - 7]) as u32) << 12
-                                            | (from_hex_char(buffer[i - 6]) as u32) << 8
-                                            | (from_hex_char(buffer[i - 9]) as u32) << 4
-                                            | (from_hex_char(buffer[i - 8]) as u32);
+                                        let rgba: u32 = (from_hex_char_map(buffer[i - 5]) as u32)
+                                            << 20
+                                            | (from_hex_char_lookup(buffer[i - 4]) as u32) << 16
+                                            | (from_hex_char_lookup(buffer[i - 7]) as u32) << 12
+                                            | (from_hex_char_lookup(buffer[i - 6]) as u32) << 8
+                                            | (from_hex_char_lookup(buffer[i - 9]) as u32) << 4
+                                            | (from_hex_char_lookup(buffer[i - 8]) as u32);
 
                                         fb.set(x, y, rgba);
                                         if cfg!(feature = "count_pixels") {
@@ -301,11 +304,52 @@ pub async fn parse_pixelflut_commands(
 }
 
 #[inline(always)]
-fn from_hex_char(char: u8) -> u8 {
+pub fn from_hex_char_map(char: u8) -> u8 {
     match char {
         b'0'..=b'9' => char - b'0',
         b'a'..=b'f' => char - b'a' + 10,
         b'A'..=b'F' => char - b'A' + 10,
         _ => 0,
+    }
+}
+
+// fn main() {
+// let numbers = (0..=255)
+//     .map(|char| match char {
+//         b'0'..=b'9' => char - b'0',
+//         b'a'..=b'f' => char - b'a' + 10,
+//         b'A'..=b'F' => char - b'A' + 10,
+//         _ => 0,
+//     })
+//     .map(|number| number.to_string())
+//     .collect::<Vec<String>>();
+// println!("{}", numbers.join(", "));
+// }
+const ASCII_HEXADECIMAL_VALUES: [u8; 256] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0,
+    0, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
+];
+
+#[inline(always)]
+pub fn from_hex_char_lookup(char: u8) -> u8 {
+    ASCII_HEXADECIMAL_VALUES[char as usize]
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_from_hex_char() {
+        for c in 0..=255 {
+            assert_eq!(from_hex_char_map(c), from_hex_char_map(c));
+        }
     }
 }

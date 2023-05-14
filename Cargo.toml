@@ -22,7 +22,7 @@ name = "breakwater"
 path = "src/main.rs"
 
 [[bench]]
-name = "parse_pixelflut_commands"
+name = "benchmarks"
 harness = false
 
 [profile.dev]

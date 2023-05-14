@@ -1,6 +1,6 @@
 use breakwater::{
     framebuffer::FrameBuffer,
-    parser::{parse_pixelflut_commands, ParserState},
+    parser::{from_hex_char_lookup, from_hex_char_map, parse_pixelflut_commands, ParserState},
     test::helpers::{get_commands_to_draw_rect, get_commands_to_read_rect, DevNullTcpStream},
 };
 use criterion::{
@@ -18,6 +18,44 @@ async fn invoke_parse_pixelflut_commands(
 ) {
     let mut stream = DevNullTcpStream::default();
     parse_pixelflut_commands(input, fb, &mut stream, parser_state).await;
+}
+
+fn invoke_from_hex_char_map() -> u8 {
+    // So that we actually compute something
+    let mut result = 0;
+    for char in b'0'..=b'9' {
+        result |= from_hex_char_map(char);
+    }
+    for char in b'a'..=b'f' {
+        result |= from_hex_char_map(char);
+    }
+    for char in b'A'..=b'F' {
+        result |= from_hex_char_map(char);
+    }
+    result |= from_hex_char_map(b'\n');
+    result |= from_hex_char_map(b' ');
+    result |= from_hex_char_map(b';');
+    result |= from_hex_char_map(b'%');
+    result
+}
+
+fn invoke_from_hex_char_lookup() -> u8 {
+    // So that we actually compute something
+    let mut result = 0;
+    for char in b'0'..=b'9' {
+        result |= from_hex_char_lookup(char);
+    }
+    for char in b'a'..=b'f' {
+        result |= from_hex_char_lookup(char);
+    }
+    for char in b'A'..=b'F' {
+        result |= from_hex_char_lookup(char);
+    }
+    result |= from_hex_char_lookup(b'\n');
+    result |= from_hex_char_lookup(b' ');
+    result |= from_hex_char_lookup(b';');
+    result |= from_hex_char_lookup(b'%');
+    result
 }
 
 fn from_elem(c: &mut Criterion) {
@@ -54,6 +92,13 @@ fn from_elem(c: &mut Criterion) {
                 .iter(|| invoke_parse_pixelflut_commands(input, &fb, parser_state.clone()));
         },
     );
+
+    c.bench_function("from_hex_char_map", |b: &mut criterion::Bencher| {
+        b.iter(invoke_from_hex_char_map)
+    });
+    c.bench_function("from_hex_char_lookup", |b: &mut criterion::Bencher| {
+        b.iter(invoke_from_hex_char_lookup)
+    });
 }
 
 criterion_group!(benches, from_elem);
