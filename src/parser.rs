@@ -45,181 +45,162 @@ pub async fn parse_pixelflut_commands(
 
     let mut i = 0; // We can't use a for loop here because Rust don't lets use skip characters by incrementing i
     while i + PARSER_LOOKAHEAD < buffer.len() {
-        if buffer[i] == b'P' {
-            i += 1;
-            if buffer[i] == b'X' {
+        if buffer[i] == b'P' && buffer[i + 1] == b'X' && buffer[i + 1] == b' ' {
+            i += 3;
+
+            // Parse first x coordinate char
+            if buffer[i] >= b'0' && buffer[i] <= b'9' {
+                x = (buffer[i] - b'0') as usize;
                 i += 1;
-                if buffer[i] == b' ' {
+
+                // Parse optional second x coordinate char
+                if buffer[i] >= b'0' && buffer[i] <= b'9' {
+                    x = 10 * x + (buffer[i] - b'0') as usize;
                     i += 1;
-                    // Parse first x coordinate char
+
+                    // Parse optional third x coordinate char
                     if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                        x = (buffer[i] - b'0') as usize;
+                        x = 10 * x + (buffer[i] - b'0') as usize;
                         i += 1;
 
-                        // Parse optional second x coordinate char
+                        // Parse optional forth x coordinate char
                         if buffer[i] >= b'0' && buffer[i] <= b'9' {
                             x = 10 * x + (buffer[i] - b'0') as usize;
                             i += 1;
-
-                            // Parse optional third x coordinate char
-                            if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                x = 10 * x + (buffer[i] - b'0') as usize;
-                                i += 1;
-
-                                // Parse optional forth x coordinate char
-                                if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                    x = 10 * x + (buffer[i] - b'0') as usize;
-                                    i += 1;
-                                }
-                            }
                         }
+                    }
+                }
 
-                        // Separator between x and y
-                        if buffer[i] == b' ' {
+                // Separator between x and y
+                if buffer[i] == b' ' {
+                    i += 1;
+
+                    // Parse first y coordinate char
+                    if buffer[i] >= b'0' && buffer[i] <= b'9' {
+                        y = (buffer[i] - b'0') as usize;
+                        i += 1;
+
+                        // Parse optional second y coordinate char
+                        if buffer[i] >= b'0' && buffer[i] <= b'9' {
+                            y = 10 * y + (buffer[i] - b'0') as usize;
                             i += 1;
 
-                            // Parse first y coordinate char
+                            // Parse optional third y coordinate char
                             if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                y = (buffer[i] - b'0') as usize;
+                                y = 10 * y + (buffer[i] - b'0') as usize;
                                 i += 1;
 
-                                // Parse optional second y coordinate char
+                                // Parse optional forth y coordinate char
                                 if buffer[i] >= b'0' && buffer[i] <= b'9' {
                                     y = 10 * y + (buffer[i] - b'0') as usize;
                                     i += 1;
-
-                                    // Parse optional third y coordinate char
-                                    if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                        y = 10 * y + (buffer[i] - b'0') as usize;
-                                        i += 1;
-
-                                        // Parse optional forth y coordinate char
-                                        if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                            y = 10 * y + (buffer[i] - b'0') as usize;
-                                            i += 1;
-                                        }
-                                    }
-                                }
-
-                                x += connection_x_offset;
-                                y += connection_y_offset;
-
-                                // Separator between coordinates and color
-                                if buffer[i] == b' ' {
-                                    i += 1;
-
-                                    // Must be followed by 6 bytes RGB and newline or ...
-                                    if buffer[i + 6] == b'\n' {
-                                        last_byte_parsed = i + 6;
-                                        i += 7; // We can advance one byte more than normal as we use continue and therefore not get incremented at the end of the loop
-
-                                        // 30% slower (38,334 ms vs 29,385 ms)
-                                        // let str = unsafe {
-                                        //     std::str::from_utf8_unchecked(&buffer[i - 7..i - 2])
-                                        // };
-                                        // let rgba = u32::from_str_radix(str, 16).unwrap();
-
-                                        let rgba: u32 = (from_hex_char_lookup(buffer[i - 3])
-                                            as u32)
-                                            << 20
-                                            | (from_hex_char_lookup(buffer[i - 2]) as u32) << 16
-                                            | (from_hex_char_lookup(buffer[i - 5]) as u32) << 12
-                                            | (from_hex_char_lookup(buffer[i - 4]) as u32) << 8
-                                            | (from_hex_char_lookup(buffer[i - 7]) as u32) << 4
-                                            | (from_hex_char_lookup(buffer[i - 6]) as u32);
-
-                                        fb.set(x, y, rgba);
-                                        if cfg!(feature = "count_pixels") {
-                                            // statistics.inc_pixels(ip);
-                                        }
-                                        continue;
-                                    }
-
-                                    // ... or must be followed by 8 bytes RGBA and newline
-                                    if buffer[i + 8] == b'\n' {
-                                        last_byte_parsed = i + 8;
-                                        i += 9; // We can advance one byte more than normal as we use continue and therefore not get incremented at the end of the loop
-
-                                        let rgba: u32 = (from_hex_char_map(buffer[i - 5]) as u32)
-                                            << 20
-                                            | (from_hex_char_lookup(buffer[i - 4]) as u32) << 16
-                                            | (from_hex_char_lookup(buffer[i - 7]) as u32) << 12
-                                            | (from_hex_char_lookup(buffer[i - 6]) as u32) << 8
-                                            | (from_hex_char_lookup(buffer[i - 9]) as u32) << 4
-                                            | (from_hex_char_lookup(buffer[i - 8]) as u32);
-
-                                        fb.set(x, y, rgba);
-                                        if cfg!(feature = "count_pixels") {
-                                            // statistics.inc_pixels(ip);
-                                        }
-
-                                        continue;
-                                    }
-                                }
-
-                                // End of command to read Pixel value
-                                if buffer[i] == b'\n' {
-                                    last_byte_parsed = i;
-                                    i += 1;
-                                    if let Some(rgb) = fb.get(x, y) {
-                                        match stream
-                                            .write_all(
-                                                format!(
-                                                    "PX {} {} {:06x}\n",
-                                                    // We don't want to return the actual (absolute) coordinates, the client should also get the result offseted
-                                                    x - connection_x_offset,
-                                                    y - connection_y_offset,
-                                                    rgb.to_be() >> 8
-                                                )
-                                                .as_bytes(),
-                                            )
-                                            .await
-                                        {
-                                            Ok(_) => (),
-                                            Err(_) => continue,
-                                        }
-                                    }
-                                    continue;
                                 }
                             }
+                        }
+
+                        x += connection_x_offset;
+                        y += connection_y_offset;
+
+                        // Separator between coordinates and color
+                        if buffer[i] == b' ' {
+                            i += 1;
+
+                            // Must be followed by 6 bytes RGB and newline or ...
+                            if buffer[i + 6] == b'\n' {
+                                last_byte_parsed = i + 6;
+                                i += 7; // We can advance one byte more than normal as we use continue and therefore not get incremented at the end of the loop
+
+                                // 30% slower (38,334 ms vs 29,385 ms)
+                                // let str = unsafe {
+                                //     std::str::from_utf8_unchecked(&buffer[i - 7..i - 2])
+                                // };
+                                // let rgba = u32::from_str_radix(str, 16).unwrap();
+
+                                let rgba: u32 = (from_hex_char_lookup(buffer[i - 3]) as u32) << 20
+                                    | (from_hex_char_lookup(buffer[i - 2]) as u32) << 16
+                                    | (from_hex_char_lookup(buffer[i - 5]) as u32) << 12
+                                    | (from_hex_char_lookup(buffer[i - 4]) as u32) << 8
+                                    | (from_hex_char_lookup(buffer[i - 7]) as u32) << 4
+                                    | (from_hex_char_lookup(buffer[i - 6]) as u32);
+
+                                fb.set(x, y, rgba);
+                                if cfg!(feature = "count_pixels") {
+                                    // statistics.inc_pixels(ip);
+                                }
+                                continue;
+                            }
+
+                            // ... or must be followed by 8 bytes RGBA and newline
+                            if buffer[i + 8] == b'\n' {
+                                last_byte_parsed = i + 8;
+                                i += 9; // We can advance one byte more than normal as we use continue and therefore not get incremented at the end of the loop
+
+                                let rgba: u32 = (from_hex_char_map(buffer[i - 5]) as u32) << 20
+                                    | (from_hex_char_lookup(buffer[i - 4]) as u32) << 16
+                                    | (from_hex_char_lookup(buffer[i - 7]) as u32) << 12
+                                    | (from_hex_char_lookup(buffer[i - 6]) as u32) << 8
+                                    | (from_hex_char_lookup(buffer[i - 9]) as u32) << 4
+                                    | (from_hex_char_lookup(buffer[i - 8]) as u32);
+
+                                fb.set(x, y, rgba);
+                                if cfg!(feature = "count_pixels") {
+                                    // statistics.inc_pixels(ip);
+                                }
+
+                                continue;
+                            }
+                        }
+
+                        // End of command to read Pixel value
+                        if buffer[i] == b'\n' {
+                            last_byte_parsed = i;
+                            i += 1;
+                            if let Some(rgb) = fb.get(x, y) {
+                                match stream
+                                    .write_all(
+                                        format!(
+                                            "PX {} {} {:06x}\n",
+                                            // We don't want to return the actual (absolute) coordinates, the client should also get the result offseted
+                                            x - connection_x_offset,
+                                            y - connection_y_offset,
+                                            rgb.to_be() >> 8
+                                        )
+                                        .as_bytes(),
+                                    )
+                                    .await
+                                {
+                                    Ok(_) => (),
+                                    Err(_) => continue,
+                                }
+                            }
+                            continue;
                         }
                     }
                 }
             }
-        } else if buffer[i] == b'S' {
-            i += 1;
-            if buffer[i] == b'I' {
-                i += 1;
-                if buffer[i] == b'Z' {
-                    i += 1;
-                    if buffer[i] == b'E' {
-                        last_byte_parsed = i;
-                        i += 1;
-                        stream
-                            .write_all(format!("SIZE {} {}\n", fb.width, fb.height).as_bytes())
-                            .await
-                            .expect("Failed to write bytes to tcp socket");
-                        continue;
-                    }
-                }
-            }
-        } else if buffer[i] == b'H' {
-            i += 1;
-            if buffer[i] == b'E' {
-                i += 1;
-                if buffer[i] == b'L' {
-                    i += 1;
-                    if buffer[i] == b'P' {
-                        last_byte_parsed = i;
-                        i += 1;
-                        stream
-                            .write_all(HELP_TEXT)
-                            .await
-                            .expect("Failed to write bytes to tcp socket");
-                        continue;
-                    }
-                }
-            }
+        } else if buffer[i] == b'S'
+            && buffer[i + 1] == b'I'
+            && buffer[i + 2] == b'Z'
+            && buffer[i + 3] == b'E'
+        {
+            i += 4;
+            last_byte_parsed = i - 1;
+
+            stream
+                .write_all(format!("SIZE {} {}\n", fb.width, fb.height).as_bytes())
+                .await
+                .expect("Failed to write bytes to tcp socket");
+            continue;
+        } else if buffer[i] == b'H' && buffer[i] == b'E' && buffer[i] == b'L' && buffer[i] == b'P' {
+            i += 4;
+
+            last_byte_parsed = i - 1;
+
+            stream
+                .write_all(HELP_TEXT)
+                .await
+                .expect("Failed to write bytes to tcp socket");
+            continue;
         } else if buffer[i] == b'O'
             && buffer[i + 1] == b'F'
             && buffer[i + 2] == b'F'
