@@ -24,6 +24,10 @@ pub struct ParserState {
 }
 
 /// Returns the offset (think of index in [u8]) of the last bytes of the last fully parsed command.
+///
+/// TODO: Implement support for 16K (15360 × 8640).
+/// Currently the parser only can read up to 4 digits of x or y coordinates.
+/// If you buy me a big enough screen I will kindly implement the feature.
 pub async fn parse_pixelflut_commands(
     buffer: &[u8],
     fb: &Arc<FrameBuffer>,
