@@ -1,5 +1,5 @@
 [package]
-name = "breakwater-rewrite"
+name = "breakwater"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,6 +9,14 @@ env_logger = "0.10"
 log = "0.4"
 rstest = "0.17"
 tokio = { version = "1.28", features = ["rt-multi-thread", "net", "io-util", "macros", "time"] }
+
+[lib]
+name = "breakwater"
+path = "src/lib.rs"
+
+[[bin]]
+name = "breakwater"
+path = "src/main.rs"
 
 [profile.dev]
 opt-level = 3
