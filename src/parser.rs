@@ -113,6 +113,12 @@ pub async fn parse_pixelflut_commands(
                                         last_byte_parsed = i + 6;
                                         i += 7; // We can advance one byte more than normal as we use continue and therefore not get incremented at the end of the loop
 
+                                        // 30% slower (38,334 ms vs 29,385 ms)
+                                        // let str = unsafe {
+                                        //     std::str::from_utf8_unchecked(&buffer[i - 7..i - 2])
+                                        // };
+                                        // let rgba = u32::from_str_radix(str, 16).unwrap();
+
                                         let rgba: u32 = (from_hex_char(buffer[i - 3]) as u32) << 20
                                             | (from_hex_char(buffer[i - 2]) as u32) << 16
                                             | (from_hex_char(buffer[i - 5]) as u32) << 12
