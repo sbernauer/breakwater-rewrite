@@ -20,6 +20,7 @@ async fn invoke_parse_pixelflut_commands(
     parse_pixelflut_commands(input, fb, &mut stream, parser_state).await;
 }
 
+#[allow(unused)] // Benchmarks are commented out by default
 fn invoke_from_hex_char_map() -> u8 {
     // So that we actually compute something
     let mut result = 0;
@@ -39,6 +40,7 @@ fn invoke_from_hex_char_map() -> u8 {
     result
 }
 
+#[allow(unused)] // Benchmarks are commented out by default
 fn invoke_from_hex_char_lookup() -> u8 {
     // So that we actually compute something
     let mut result = 0;
@@ -93,12 +95,12 @@ fn from_elem(c: &mut Criterion) {
         },
     );
 
-    c.bench_function("from_hex_char_map", |b: &mut criterion::Bencher| {
-        b.iter(invoke_from_hex_char_map)
-    });
-    c.bench_function("from_hex_char_lookup", |b: &mut criterion::Bencher| {
-        b.iter(invoke_from_hex_char_lookup)
-    });
+    // c.bench_function("from_hex_char_map", |b: &mut criterion::Bencher| {
+    //     b.iter(invoke_from_hex_char_map)
+    // });
+    // c.bench_function("from_hex_char_lookup", |b: &mut criterion::Bencher| {
+    //     b.iter(invoke_from_hex_char_lookup)
+    // });
 }
 
 criterion_group!(benches, from_elem);
