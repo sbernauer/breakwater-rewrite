@@ -8,6 +8,8 @@ use std::sync::Arc;
 mod args;
 mod framebuffer;
 mod network;
+mod parser;
+mod ringbuffer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

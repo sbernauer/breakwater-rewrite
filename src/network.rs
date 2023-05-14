@@ -1,26 +1,21 @@
 use crate::framebuffer::FrameBuffer;
+use circbuf::CircBuf;
 use log::{debug, info};
 use std::{
     net::{IpAddr, Ipv4Addr},
     sync::Arc,
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    io::AsyncReadExt,
+    net::{TcpListener, TcpStream},
 };
 
-const NETWORK_BUFFER_SIZE: usize = 256_000;
-pub const HELP_TEXT: &[u8] = "\
-Pixelflut server powered by breakwater https://github.com/sbernauer/breakwater
-Available commands:
-HELP: Show this help
-PX x y rrggbb: Color the pixel (x,y) with the given hexadecimal color
-PX x y rrggbbaa: Color the pixel (x,y) with the given hexadecimal color rrggbb (alpha channel is ignored for now)
-PX x y: Get the color value of the pixel (x,y)
-SIZE: Get the size of the drawing surface, e.g. `SIZE 1920 1080`
-OFFSET x y: Apply offset (x,y) to all further pixel draws on this connection
-".as_bytes();
-const LOOP_LOOKAHEAD: usize = "PX 1234 1234 rrggbbaa\n".len();
+// CircBuf::with_capacity(256_000) rounds to this number
+pub const NETWORK_RING_BUFFER_SIZE: usize = 262_143;
+// It's very important to not simply divide by a whole number!
+// In that case the read from the TCP socket can stall because of the way we currently read using
+// `.read(buffer.get_avail_upto_size(NETWORK_BATCH_SIZE)[0])`
+const NETWORK_BATCH_SIZE: usize = NETWORK_RING_BUFFER_SIZE / 2 + 1;
 
 pub struct Network {
     listen_address: String,
@@ -34,10 +29,7 @@ impl Network {
 
     pub async fn listen(&self) -> tokio::io::Result<()> {
         let listener = TcpListener::bind(&self.listen_address).await?;
-        info!(
-            "Listening for Pixelflut connections on {}",
-            self.listen_address
-        );
+        info!("Started Pixelflut server on {}", self.listen_address);
 
         loop {
             let (socket, socket_addr) = listener.accept().await?;
@@ -53,300 +45,154 @@ impl Network {
     }
 }
 
+#[derive(Default)]
+pub struct ClientState {
+    pub connection_x_offset: usize,
+    pub connection_y_offset: usize,
+}
+
 pub async fn handle_connection(
-    mut stream: impl AsyncReadExt + AsyncWriteExt + Unpin,
+    // mut stream: impl AsyncReadExt + AsyncWriteExt + Unpin,
+    mut stream: TcpStream,
     ip: IpAddr,
-    fb: Arc<FrameBuffer>,
+    _fb: Arc<FrameBuffer>,
 ) {
     debug!("Handling connection from {ip}");
-    let mut buffer = [0u8; NETWORK_BUFFER_SIZE];
-    // Number bytes left over **on the first bytes of the buffer** from the previous loop iteration
-    let mut leftover_bytes_in_buffer = 0;
+    let mut buffer =
+        CircBuf::with_capacity(NETWORK_RING_BUFFER_SIZE).expect("Failed to create ringbuffer");
+    debug!("Crated ringbuffer of size {}", buffer.cap());
 
-    let mut x: usize;
-    let mut y: usize;
-    let mut x_offset = 0;
-    let mut y_offset = 0;
+    // let mut buffer = [0u8; NETWORK_BUFFER_SIZE];
+    // // Number of bytes left over **on the first bytes of the buffer** from the previous loop iteration
+    // let mut leftover_bytes_in_buffer = 0;
+
+    // We have to keep the some things - such as connection offset - for the whole connection lifetime, so let's define them here
+    // let mut client_state: ClientState = ClientState::default();
+    // let mut parser_state: ParserState = ParserState::default();
 
     loop {
-        // Fill the buffer up with new data from the socket
-        // If there are any bytes left over from the previous loop iteration leave them as is and but the new data behind
-        let bytes = match stream.read(&mut buffer[leftover_bytes_in_buffer..]).await {
-            Ok(bytes) => bytes,
+        // Fill the ringbuffer up with new data from the socket
+        let bytes_read = match stream
+            .read(buffer.get_avail_upto_size(NETWORK_BATCH_SIZE)[0])
+            .await
+        {
+            // let bytes_read = match stream.readv(&buffer.get_avail()) { // Had bad performance
+            Ok(bytes_read) => bytes_read,
             Err(_) => {
                 // statistics.dec_connections(ip);
                 break;
             }
         };
+        buffer.advance_write(bytes_read);
+
+        let buffer_byte_slices = &buffer.get_bytes();
+        let read_right = buffer_byte_slices[0];
+        let read_left = buffer_byte_slices[1];
+        // let read = read_right.iter().chain(read_left.iter());
+        let read_len = read_right.len() + read_left.len();
+
+        // if read_len < PARSER_LOOKAHEAD {
+        //     continue; // Try to get more data
+        // }
+
+        let mut x = 0;
+
+        // for i in read {
+        //     // x = *i;
+        // }
+        if read_left.len() != 0 {
+            dbg!(read_right.len(), read_left.len());
+        }
+        for i in read_right {
+            x = *i;
+        }
+        for i in read_left {
+            x = *i;
+        }
+        buffer.advance_read(read_len);
+
+        // if bytes_read != read_len {
+        //     dbg!(bytes_read, read_len);
+        // }
+        // statistics.inc_bytes(ip, bytes as u64);
+
+        // loop {
+        //     let next = match buffer.get() {
+        //         Ok(next) => next,
+        //         Err(CircBufError::BufEmpty) => {
+        //             // yield_now().await;
+        //             break;
+        //         }
+        //         Err(_) => {
+        //             panic!("TODO, this should not happen")
+        //         }
+        //     };
+        // }
+
+        // parse_pixelflut_commands(
+        //     &buffer[..data_end + PARSER_LOOKAHEAD],
+        //     &fb,
+        //     &mut stream,
+        //     &mut client_state,
+        //     &mut parser_state,
+        // )
+        // .await;
+
+        // // Fill the buffer up with new data from the socket
+        // // If there are any bytes left over from the previous loop iteration leave them as is and put the new data behind
+        // // We also need to leave `PARSER_LOOKAHEAD` space at the end, so the parser does not need to check boundaries all over the place
+        // let bytes_read = match stream
+        //     .read(&mut buffer[leftover_bytes_in_buffer..NETWORK_BUFFER_SIZE - PARSER_LOOKAHEAD])
+        //     .await
+        // {
+        //     Ok(bytes_read) => bytes_read,
+        //     Err(_) => {
+        //         // statistics.dec_connections(ip);
+        //         break;
+        //     }
+        // };
 
         // statistics.inc_bytes(ip, bytes as u64);
 
-        let mut loop_end = leftover_bytes_in_buffer + bytes;
-        if bytes == 0 {
-            if leftover_bytes_in_buffer == 0 {
-                // We read no data and the previous loop did consume all data
-                // Nothing to do here, closing connection
-                // statistics.dec_connections(ip);
-                break;
-            }
+        // let mut data_end = leftover_bytes_in_buffer + bytes_read;
+        // assert!(data_end <= NETWORK_BUFFER_SIZE);
+        // assert!(data_end <= NETWORK_BUFFER_SIZE - PARSER_LOOKAHEAD);
 
-            // No new data from socket, read to the end and everything should be fine
-            leftover_bytes_in_buffer = 0;
-        } else {
-            // Read some data, process it
-            if loop_end >= NETWORK_BUFFER_SIZE {
-                leftover_bytes_in_buffer = LOOP_LOOKAHEAD;
-                loop_end -= leftover_bytes_in_buffer;
-            } else {
-                leftover_bytes_in_buffer = 0;
-            }
-        }
+        // if bytes_read == 0 {
+        //     if leftover_bytes_in_buffer == 0 {
+        //         // We read no data and the previous loop did consume all data
+        //         // Nothing to do here, closing connection
+        //         // statistics.dec_connections(ip);
+        //         break;
+        //     }
 
-        let mut i = 0; // We can't use a for loop here because Rust don't lets use skip characters by incrementing i
-        while i < loop_end {
-            if buffer[i] == b'P' {
-                i += 1;
-                if buffer[i] == b'X' {
-                    i += 1;
-                    if buffer[i] == b' ' {
-                        i += 1;
-                        // Parse first x coordinate char
-                        if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                            x = (buffer[i] - b'0') as usize;
-                            i += 1;
+        //     // No new data from socket, read to the end and everything should be fine
+        //     // Next loop iteration will likely close connection
+        //     leftover_bytes_in_buffer = 0;
+        // } else {
+        //     // We have read some data, process it
 
-                            // Parse optional second x coordinate char
-                            if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                x = 10 * x + (buffer[i] - b'0') as usize;
-                                i += 1;
+        //     // We need to zero the PARSER_LOOKAHEAD bytes, so the parser does not detect any command left over from a previous loop iteration
+        //     for i in &mut buffer[data_end..data_end + PARSER_LOOKAHEAD] {
+        //         *i = 0;
+        //     }
 
-                                // Parse optional third x coordinate char
-                                if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                    x = 10 * x + (buffer[i] - b'0') as usize;
-                                    i += 1;
+        //     parse_pixelflut_commands(
+        //         &buffer[..data_end + PARSER_LOOKAHEAD],
+        //         &fb,
+        //         &mut stream,
+        //         &mut client_state,
+        //         &mut parser_state,
+        //     )
+        //     .await;
 
-                                    // Parse optional forth x coordinate char
-                                    if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                        x = 10 * x + (buffer[i] - b'0') as usize;
-                                        i += 1;
-                                    }
-                                }
-                            }
+        //     leftover_bytes_in_buffer = data_end - parser_state.last_byte_parsed;
+        // }
 
-                            // Separator between x and y
-                            if buffer[i] == b' ' {
-                                i += 1;
-
-                                // Parse first y coordinate char
-                                if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                    y = (buffer[i] - b'0') as usize;
-                                    i += 1;
-
-                                    // Parse optional second y coordinate char
-                                    if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                        y = 10 * y + (buffer[i] - b'0') as usize;
-                                        i += 1;
-
-                                        // Parse optional third y coordinate char
-                                        if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                            y = 10 * y + (buffer[i] - b'0') as usize;
-                                            i += 1;
-
-                                            // Parse optional forth y coordinate char
-                                            if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                                y = 10 * y + (buffer[i] - b'0') as usize;
-                                                i += 1;
-                                            }
-                                        }
-                                    }
-
-                                    x += x_offset;
-                                    y += y_offset;
-
-                                    // Separator between coordinates and color
-                                    if buffer[i] == b' ' {
-                                        i += 1;
-
-                                        // Must be followed by 6 bytes RGB and newline or ...
-                                        if buffer[i + 6] == b'\n' {
-                                            i += 7; // We can advance one byte more than normal as we use continue and therefore not get incremented at the end of the loop
-
-                                            let rgba: u32 = (from_hex_char(buffer[i - 3]) as u32)
-                                                << 20
-                                                | (from_hex_char(buffer[i - 2]) as u32) << 16
-                                                | (from_hex_char(buffer[i - 5]) as u32) << 12
-                                                | (from_hex_char(buffer[i - 4]) as u32) << 8
-                                                | (from_hex_char(buffer[i - 7]) as u32) << 4
-                                                | (from_hex_char(buffer[i - 6]) as u32);
-
-                                            fb.set(x, y, rgba);
-                                            if cfg!(feature = "count_pixels") {
-                                                // statistics.inc_pixels(ip);
-                                            }
-                                            continue;
-                                        }
-
-                                        // ... or must be followed by 8 bytes RGBA and newline
-                                        if buffer[i + 8] == b'\n' {
-                                            i += 9; // We can advance one byte more than normal as we use continue and therefore not get incremented at the end of the loop
-
-                                            let rgba: u32 = (from_hex_char(buffer[i - 5]) as u32)
-                                                << 20
-                                                | (from_hex_char(buffer[i - 4]) as u32) << 16
-                                                | (from_hex_char(buffer[i - 7]) as u32) << 12
-                                                | (from_hex_char(buffer[i - 6]) as u32) << 8
-                                                | (from_hex_char(buffer[i - 9]) as u32) << 4
-                                                | (from_hex_char(buffer[i - 8]) as u32);
-
-                                            fb.set(x, y, rgba);
-                                            if cfg!(feature = "count_pixels") {
-                                                // statistics.inc_pixels(ip);
-                                            }
-                                            continue;
-                                        }
-                                    }
-
-                                    // End of command to read Pixel value
-                                    if buffer[i] == b'\n' && x < fb.width && y < fb.height {
-                                        if let Some(rgb) = fb.get(x, y) {
-                                            match stream
-                                                .write_all(
-                                                    format!(
-                                                        "PX {} {} {:06x}\n",
-                                                        // We don't want to return the actual (absolute) coordinates, the client should also get the result offseted
-                                                        x - x_offset,
-                                                        y - y_offset,
-                                                        rgb.to_be() >> 8
-                                                    )
-                                                    .as_bytes(),
-                                                )
-                                                .await
-                                            {
-                                                Ok(_) => (),
-                                                Err(_) => continue,
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if buffer[i] == b'S' {
-                i += 1;
-                if buffer[i] == b'I' {
-                    i += 1;
-                    if buffer[i] == b'Z' {
-                        i += 1;
-                        if buffer[i] == b'E' {
-                            stream
-                                .write_all(format!("SIZE {} {}\n", fb.width, fb.height).as_bytes())
-                                .await
-                                .expect("Failed to write bytes to tcp socket");
-                        }
-                    }
-                }
-            } else if buffer[i] == b'H' {
-                i += 1;
-                if buffer[i] == b'E' {
-                    i += 1;
-                    if buffer[i] == b'L' {
-                        i += 1;
-                        if buffer[i] == b'P' {
-                            stream
-                                .write_all(HELP_TEXT)
-                                .await
-                                .expect("Failed to write bytes to tcp socket");
-                        }
-                    }
-                }
-            } else if buffer[i] == b'O'
-                && buffer[i + 1] == b'F'
-                && buffer[i + 2] == b'F'
-                && buffer[i + 3] == b'S'
-                && buffer[i + 4] == b'E'
-                && buffer[i + 5] == b'T'
-            {
-                i += 6;
-                if buffer[i] == b' ' {
-                    i += 1;
-                    // Parse first x coordinate char
-                    if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                        x = (buffer[i] - b'0') as usize;
-                        i += 1;
-
-                        // Parse optional second x coordinate char
-                        if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                            x = 10 * x + (buffer[i] - b'0') as usize;
-                            i += 1;
-
-                            // Parse optional third x coordinate char
-                            if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                x = 10 * x + (buffer[i] - b'0') as usize;
-                                i += 1;
-
-                                // Parse optional forth x coordinate char
-                                if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                    x = 10 * x + (buffer[i] - b'0') as usize;
-                                    i += 1;
-                                }
-                            }
-                        }
-
-                        // Separator between x and y
-                        if buffer[i] == b' ' {
-                            i += 1;
-
-                            // Parse first y coordinate char
-                            if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                y = (buffer[i] - b'0') as usize;
-                                i += 1;
-
-                                // Parse optional second y coordinate char
-                                if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                    y = 10 * y + (buffer[i] - b'0') as usize;
-                                    i += 1;
-
-                                    // Parse optional third y coordinate char
-                                    if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                        y = 10 * y + (buffer[i] - b'0') as usize;
-                                        i += 1;
-
-                                        // Parse optional forth y coordinate char
-                                        if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                            y = 10 * y + (buffer[i] - b'0') as usize;
-                                            i += 1;
-                                        }
-                                    }
-                                }
-
-                                // End of command to set offset
-                                if buffer[i] == b'\n' {
-                                    x_offset = x;
-                                    y_offset = y;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            i += 1;
-        }
-
-        if leftover_bytes_in_buffer > 0 {
-            // We need to move the leftover bytes to the beginning of the buffer so that the next loop iteration con work on them
-            buffer.copy_within(NETWORK_BUFFER_SIZE - leftover_bytes_in_buffer.., 0);
-        }
-    }
-}
-
-fn from_hex_char(char: u8) -> u8 {
-    match char {
-        b'0'..=b'9' => char - b'0',
-        b'a'..=b'f' => char - b'a' + 10,
-        b'A'..=b'F' => char - b'A' + 10,
-        _ => 0,
+        // if leftover_bytes_in_buffer > 0 {
+        //     // We need to move the leftover bytes to the beginning of the buffer so that the next loop iteration can work on them
+        //     buffer.copy_within(data_end - leftover_bytes_in_buffer..data_end, 0);
+        // }
     }
 }
 
