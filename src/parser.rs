@@ -5,7 +5,7 @@ use tokio::io::AsyncWriteExt;
 use crate::framebuffer::FrameBuffer;
 
 pub const PARSER_LOOKAHEAD: usize = "PX 1234 1234 rrggbbaa\n".len(); // Longest possible command
-const HELP_TEXT: &[u8] = "\
+pub const HELP_TEXT: &[u8] = "\
 Pixelflut server powered by breakwater https://github.com/sbernauer/breakwater
 Available commands:
 HELP: Show this help
@@ -16,7 +16,7 @@ SIZE: Get the size of the drawing surface, e.g. `SIZE 1920 1080`
 OFFSET x y: Apply offset (x,y) to all further pixel draws on this connection
 ".as_bytes();
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ParserState {
     pub connection_x_offset: usize,
     pub connection_y_offset: usize,
@@ -147,6 +147,7 @@ pub async fn parse_pixelflut_commands(
                                 // End of command to read Pixel value
                                 if buffer[i] == b'\n' {
                                     last_byte_parsed = i;
+                                    i += 1;
                                     if let Some(rgb) = fb.get(x, y) {
                                         match stream
                                             .write_all(
@@ -165,6 +166,7 @@ pub async fn parse_pixelflut_commands(
                                             Err(_) => continue,
                                         }
                                     }
+                                    continue;
                                 }
                             }
                         }
@@ -179,6 +181,7 @@ pub async fn parse_pixelflut_commands(
                     i += 1;
                     if buffer[i] == b'E' {
                         last_byte_parsed = i;
+                        i += 1;
                         stream
                             .write_all(format!("SIZE {} {}\n", fb.width, fb.height).as_bytes())
                             .await
@@ -195,6 +198,7 @@ pub async fn parse_pixelflut_commands(
                     i += 1;
                     if buffer[i] == b'P' {
                         last_byte_parsed = i;
+                        i += 1;
                         stream
                             .write_all(HELP_TEXT)
                             .await
@@ -276,8 +280,6 @@ pub async fn parse_pixelflut_commands(
             }
         }
 
-        // FIXME
-        last_byte_parsed = i;
         i += 1;
     }
 

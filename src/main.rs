@@ -9,6 +9,8 @@ mod args;
 mod framebuffer;
 mod network;
 mod parser;
+#[cfg(test)]
+mod test;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
