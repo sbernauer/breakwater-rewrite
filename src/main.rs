@@ -1,16 +1,7 @@
-use args::Args;
+use breakwater::{args::Args, framebuffer::FrameBuffer, network::Network};
 use clap::Parser;
 use env_logger::Env;
-use framebuffer::FrameBuffer;
-use network::Network;
 use std::sync::Arc;
-
-mod args;
-mod framebuffer;
-mod network;
-mod parser;
-#[cfg(test)]
-mod test;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

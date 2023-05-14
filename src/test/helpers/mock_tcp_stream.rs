@@ -6,7 +6,7 @@ use std::{
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MockTcpStream {
     read_data: Vec<u8>,
     write_data: Vec<u8>,

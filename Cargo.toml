@@ -10,6 +10,9 @@ log = "0.4"
 rstest = "0.17"
 tokio = { version = "1.28", features = ["rt-multi-thread", "net", "io-util", "macros", "time"] }
 
+[dev-dependencies]
+criterion = {version = "0.3", features = ["async_tokio"]}
+
 [lib]
 name = "breakwater"
 path = "src/lib.rs"
@@ -17,6 +20,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "breakwater"
 path = "src/main.rs"
+
+[[bench]]
+name = "parse_pixelflut_commands"
+harness = false
 
 [profile.dev]
 opt-level = 3

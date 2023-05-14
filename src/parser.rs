@@ -16,7 +16,7 @@ SIZE: Get the size of the drawing surface, e.g. `SIZE 1920 1080`
 OFFSET x y: Apply offset (x,y) to all further pixel draws on this connection
 ".as_bytes();
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct ParserState {
     pub connection_x_offset: usize,
     pub connection_y_offset: usize,
