@@ -44,7 +44,8 @@ pub async fn parse_pixelflut_commands(
     let mut y: usize;
 
     let mut i = 0; // We can't use a for loop here because Rust don't lets use skip characters by incrementing i
-    while i + PARSER_LOOKAHEAD < buffer.len() {
+    let loop_end = buffer.len().saturating_sub(PARSER_LOOKAHEAD); // Let's extract the .len() call and the subtraction into it's own variable so we only compute it once
+    while i < loop_end {
         if buffer[i] == b'P' && buffer[i + 1] == b'X' && buffer[i + 2] == b' ' {
             i += 3;
             // Parse first x coordinate char
