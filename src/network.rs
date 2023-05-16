@@ -1,6 +1,7 @@
 use crate::{
     framebuffer::FrameBuffer,
     parser::{parse_pixelflut_commands, ParserState, PARSER_LOOKAHEAD},
+    pfparse::parse_command,
 };
 use log::{debug, info};
 use std::{
@@ -54,7 +55,8 @@ pub async fn handle_connection(
     let mut leftover_bytes_in_buffer = 0;
 
     // We have to keep the some things - such as connection offset - for the whole connection lifetime, so let's define them here
-    let mut parser_state = ParserState::default();
+    // let mut parser_state = ParserState::default();
+    let mut last_byte_parsed = 0;
 
     loop {
         // Fill the buffer up with new data from the socket
@@ -91,13 +93,33 @@ pub async fn handle_connection(
                 *i = 0;
             }
 
-            parser_state = parse_pixelflut_commands(
-                &buffer[..data_end + PARSER_LOOKAHEAD],
-                &fb,
-                &mut stream,
-                parser_state,
-            )
-            .await;
+            let result = parse_command(&buffer[..data_end + PARSER_LOOKAHEAD])
+                .await
+                .unwrap();
+            last_byte_parsed = result.1;
+            for command in result.0 {
+                match command {
+                    crate::pfparse::Command::Help => todo!(),
+                    crate::pfparse::Command::Size => todo!(),
+                    crate::pfparse::Command::PixelGet { x, y } => {
+                        if let Some(rgb) = fb.get(x, y) {
+                            stream
+                                .write_all(format!("PX {x} {y} {rgb:06x}\n").as_bytes())
+                                .await
+                                .unwrap();
+                        }
+                    }
+                    crate::pfparse::Command::PixelSet { c, x, y } => fb.set(x, y, c),
+                    crate::pfparse::Command::Offset { x, y } => todo!(),
+                }
+            }
+            // parser_state = parse_pixelflut_commands(
+            //     &buffer[..data_end + PARSER_LOOKAHEAD],
+            //     &fb,
+            //     &mut stream,
+            //     parser_state,
+            // )
+            // .await;
 
             // dbg!(data_end, parser_state.last_byte_parsed);
             // dbg!(std::str::from_utf8(
@@ -107,7 +129,7 @@ pub async fn handle_connection(
 
             // IMPORTANT: We have to subtract 1 here, as e.g. we have "PX 0 0\n" data_end is 7 and parser_state.last_byte_parsed is 6.
             // This happens, because last_byte_parsed is an index starting at 0, so index 6 is from an array of length 7
-            leftover_bytes_in_buffer = data_end - parser_state.last_byte_parsed - 1;
+            leftover_bytes_in_buffer = data_end.saturating_sub(last_byte_parsed).saturating_sub(1);
 
             // There is no need to leave anything longer than a command can take
             // This prevents malicious clients from sending gibberish and the buffer not getting drained
@@ -123,8 +145,7 @@ pub async fn handle_connection(
             // )
             // .unwrap());
             buffer.copy_within(
-                parser_state.last_byte_parsed + 1
-                    ..parser_state.last_byte_parsed + 1 + leftover_bytes_in_buffer,
+                last_byte_parsed + 1..last_byte_parsed + 1 + leftover_bytes_in_buffer,
                 0,
             );
             // dbg!(std::str::from_utf8(&buffer[..30]).unwrap());

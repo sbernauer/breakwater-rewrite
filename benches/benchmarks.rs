@@ -20,6 +20,14 @@ async fn invoke_parse_pixelflut_commands(
     parse_pixelflut_commands(input, fb, &mut stream, parser_state).await;
 }
 
+async fn invoke_parse_pixelflut_commands_pfparse(input: &[u8]) {
+    let _result = breakwater::pfparse::parse_command(input).await;
+
+    // let mut stream = DevNullTcpStream::default();
+
+    // parse_pixelflut_commands(input, fb, &mut stream, parser_state).await;
+}
+
 #[allow(unused)] // Benchmarks are commented out by default
 fn invoke_from_hex_char_map() -> u8 {
     // So that we actually compute something
@@ -64,17 +72,29 @@ fn from_elem(c: &mut Criterion) {
     let draw_commands = get_commands_to_draw_rect(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, 0x123456);
     let draw_commands = draw_commands.as_bytes();
 
+    // c.bench_with_input(
+    //     BenchmarkId::new(
+    //         "parse_draw_commands",
+    //         format!("{FRAMEBUFFER_WIDTH} x {FRAMEBUFFER_HEIGHT}"),
+    //     ),
+    //     &draw_commands,
+    //     |b, input| {
+    //         let fb = Arc::new(FrameBuffer::new(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT));
+    //         let parser_state = ParserState::default();
+    //         b.to_async(tokio::runtime::Runtime::new().unwrap())
+    //             .iter(|| invoke_parse_pixelflut_commands(input, &fb, parser_state.clone()));
+    //     },
+    // );
+
     c.bench_with_input(
         BenchmarkId::new(
-            "parse_draw_commands",
+            "parse_draw_commands_with_pfparse",
             format!("{FRAMEBUFFER_WIDTH} x {FRAMEBUFFER_HEIGHT}"),
         ),
         &draw_commands,
         |b, input| {
-            let fb = Arc::new(FrameBuffer::new(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT));
-            let parser_state = ParserState::default();
             b.to_async(tokio::runtime::Runtime::new().unwrap())
-                .iter(|| invoke_parse_pixelflut_commands(input, &fb, parser_state.clone()));
+                .iter(|| invoke_parse_pixelflut_commands_pfparse(input));
         },
     );
 
