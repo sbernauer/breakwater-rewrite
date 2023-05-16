@@ -46,15 +46,11 @@ pub async fn parse_pixelflut_commands(
     let mut i = 0; // We can't use a for loop here because Rust don't lets use skip characters by incrementing i
     let loop_end = buffer.len().saturating_sub(PARSER_LOOKAHEAD); // Let's extract the .len() call and the subtraction into it's own variable so we only compute it once
 
-    // TODO: Test performance of normal loop {}
     while i < loop_end {
-        // P = 0x50, X = 0x58, <Space> = 0x20
-
-        // TODO: Test performance of this code
-        // if unsafe { *(buffer.as_ptr().add(i) as *const u32) } & 0x00ff_ffff
-        //     == 0x50582000_u32.swap_bytes()
-        // {
-        if buffer[i] == b'P' && buffer[i + 1] == b'X' && buffer[i + 2] == b' ' {
+        // Check for buffer[i] = "PX "
+        if unsafe { *(buffer.as_ptr().add(i) as *const u32) } & 0x00ff_ffff
+            == 0x50582000_u32.swap_bytes()
+        {
             i += 3;
             // Parse first x coordinate char
             if buffer[i] >= b'0' && buffer[i] <= b'9' {
@@ -204,10 +200,8 @@ pub async fn parse_pixelflut_commands(
                     }
                 }
             }
-        } else if buffer[i] == b'S'
-            && buffer[i + 1] == b'I'
-            && buffer[i + 2] == b'Z'
-            && buffer[i + 3] == b'E'
+        // Check for buffer[i] = "SIZE"
+        } else if unsafe { *(buffer.as_ptr().add(i) as *const u32) } == 0x53495a45_u32.swap_bytes()
         {
             i += 4;
             last_byte_parsed = i - 1;
@@ -217,10 +211,8 @@ pub async fn parse_pixelflut_commands(
                 .await
                 .expect("Failed to write bytes to tcp socket");
             continue;
-        } else if buffer[i] == b'H'
-            && buffer[i + 1] == b'E'
-            && buffer[i + 2] == b'L'
-            && buffer[i + 3] == b'P'
+        // Check for buffer[i] = "HELP"
+        } else if unsafe { *(buffer.as_ptr().add(i) as *const u32) } == 0x48454c50_u32.swap_bytes()
         {
             i += 4;
             last_byte_parsed = i - 1;
@@ -230,73 +222,67 @@ pub async fn parse_pixelflut_commands(
                 .await
                 .expect("Failed to write bytes to tcp socket");
             continue;
-        } else if buffer[i] == b'O'
-            && buffer[i + 1] == b'F'
-            && buffer[i + 2] == b'F'
-            && buffer[i + 3] == b'S'
-            && buffer[i + 4] == b'E'
-            && buffer[i + 5] == b'T'
+        // Check for buffer[i] = "OFFSET "
+        } else if unsafe { *(buffer.as_ptr().add(i) as *const u64) } & 0x0000_ffff_ffff_ffff
+            == 0x4f464653455420_u64.swap_bytes()
         {
-            i += 6;
-            if buffer[i] == b' ' {
+            i += 7;
+            // Parse first x coordinate char
+            if buffer[i] >= b'0' && buffer[i] <= b'9' {
+                x = (buffer[i] - b'0') as usize;
                 i += 1;
-                // Parse first x coordinate char
+
+                // Parse optional second x coordinate char
                 if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                    x = (buffer[i] - b'0') as usize;
+                    x = 10 * x + (buffer[i] - b'0') as usize;
                     i += 1;
 
-                    // Parse optional second x coordinate char
+                    // Parse optional third x coordinate char
                     if buffer[i] >= b'0' && buffer[i] <= b'9' {
                         x = 10 * x + (buffer[i] - b'0') as usize;
                         i += 1;
 
-                        // Parse optional third x coordinate char
+                        // Parse optional forth x coordinate char
                         if buffer[i] >= b'0' && buffer[i] <= b'9' {
                             x = 10 * x + (buffer[i] - b'0') as usize;
                             i += 1;
-
-                            // Parse optional forth x coordinate char
-                            if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                x = 10 * x + (buffer[i] - b'0') as usize;
-                                i += 1;
-                            }
                         }
                     }
+                }
 
-                    // Separator between x and y
-                    if buffer[i] == b' ' {
+                // Separator between x and y
+                if buffer[i] == b' ' {
+                    i += 1;
+
+                    // Parse first y coordinate char
+                    if buffer[i] >= b'0' && buffer[i] <= b'9' {
+                        y = (buffer[i] - b'0') as usize;
                         i += 1;
 
-                        // Parse first y coordinate char
+                        // Parse optional second y coordinate char
                         if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                            y = (buffer[i] - b'0') as usize;
+                            y = 10 * y + (buffer[i] - b'0') as usize;
                             i += 1;
 
-                            // Parse optional second y coordinate char
+                            // Parse optional third y coordinate char
                             if buffer[i] >= b'0' && buffer[i] <= b'9' {
                                 y = 10 * y + (buffer[i] - b'0') as usize;
                                 i += 1;
 
-                                // Parse optional third y coordinate char
+                                // Parse optional forth y coordinate char
                                 if buffer[i] >= b'0' && buffer[i] <= b'9' {
                                     y = 10 * y + (buffer[i] - b'0') as usize;
                                     i += 1;
-
-                                    // Parse optional forth y coordinate char
-                                    if buffer[i] >= b'0' && buffer[i] <= b'9' {
-                                        y = 10 * y + (buffer[i] - b'0') as usize;
-                                        i += 1;
-                                    }
                                 }
                             }
+                        }
 
-                            // End of command to set offset
-                            if buffer[i] == b'\n' {
-                                last_byte_parsed = i;
-                                connection_x_offset = x;
-                                connection_y_offset = y;
-                                continue;
-                            }
+                        // End of command to set offset
+                        if buffer[i] == b'\n' {
+                            last_byte_parsed = i;
+                            connection_x_offset = x;
+                            connection_y_offset = y;
+                            continue;
                         }
                     }
                 }
