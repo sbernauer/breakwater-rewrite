@@ -36,6 +36,8 @@ impl FrameBuffer {
 
     #[inline(always)]
     pub fn set(&self, x: usize, y: usize, rgba: u32) {
+        // TODO: If we make the FrameBuffer large enough (e.g. 10_000 x 10_000) we don't need to check the bounds here (x and y are max 4 digit numbers).
+        // (flamegraph has shown 5.21% of runtime in this bound check O.o)
         if x < self.width && y < self.height {
             unsafe { (*self.buffer.get())[x + y * self.width] = rgba }
         }

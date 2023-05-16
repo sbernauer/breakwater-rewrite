@@ -45,7 +45,15 @@ pub async fn parse_pixelflut_commands(
 
     let mut i = 0; // We can't use a for loop here because Rust don't lets use skip characters by incrementing i
     let loop_end = buffer.len().saturating_sub(PARSER_LOOKAHEAD); // Let's extract the .len() call and the subtraction into it's own variable so we only compute it once
+
+    // TODO: Test performance of normal loop {}
     while i < loop_end {
+        // P = 0x50, X = 0x58, <Space> = 0x20
+
+        // TODO: Test performance of this code
+        // if unsafe { *(buffer.as_ptr().add(i) as *const u32) } & 0x00ff_ffff
+        //     == 0x50582000_u32.swap_bytes()
+        // {
         if buffer[i] == b'P' && buffer[i + 1] == b'X' && buffer[i + 2] == b' ' {
             i += 3;
             // Parse first x coordinate char
@@ -55,6 +63,11 @@ pub async fn parse_pixelflut_commands(
 
                 // Parse optional second x coordinate char
                 if buffer[i] >= b'0' && buffer[i] <= b'9' {
+                    // TODO: Test bitshifts and add instead of multiplication
+                    // i = (i << 3) + (i << 1);
+                    // i = (i * 8) + (i * 2);
+                    // i = 8i + 2i
+                    // i = 10i
                     x = 10 * x + (buffer[i] - b'0') as usize;
                     i += 1;
 
@@ -104,6 +117,9 @@ pub async fn parse_pixelflut_commands(
                         // Separator between coordinates and color
                         if buffer[i] == b' ' {
                             i += 1;
+
+                            // TODO: Determine what clients use more: RGB or RGBA.
+                            // If RGBA is used more often move the RGB code below the RGBA code
 
                             // Must be followed by 6 bytes RGB and newline or ...
                             if buffer[i + 6] == b'\n' {
