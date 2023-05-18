@@ -1,4 +1,4 @@
-use breakwater::{args::Args, framebuffer::FrameBuffer, network::Network};
+use breakwater::{args::Args, framebuffer::FrameBuffer, network::Network, vnc::VncServer};
 use clap::Parser;
 use env_logger::Env;
 use std::sync::Arc;
@@ -16,7 +16,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         network.listen().await.unwrap();
     });
 
+    let fb_for_vnc_server = Arc::clone(&fb);
+    // TODO Use tokio::spawn instead of std::thread::spawn
+    // I was not able to get to work with async closure
+    let vnc_server_thread = std::thread::spawn(move || {
+        let vnc_server = VncServer::new(fb_for_vnc_server, args.vnc_port, args.fps);
+        vnc_server.run();
+    });
+
     network_listener_thread.await?;
+    vnc_server_thread
+        .join()
+        .expect("Failed to join VNC server thread");
 
     Ok(())
 }

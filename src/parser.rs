@@ -207,7 +207,7 @@ pub async fn parse_pixelflut_commands(
             last_byte_parsed = i - 1;
 
             stream
-                .write_all(format!("SIZE {} {}\n", fb.width, fb.height).as_bytes())
+                .write_all(format!("SIZE {} {}\n", fb.get_width(), fb.get_height()).as_bytes())
                 .await
                 .expect("Failed to write bytes to tcp socket");
             continue;

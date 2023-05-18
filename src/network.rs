@@ -246,8 +246,8 @@ mod test {
     #[case(479, 361, 721, 391)]
     #[case(500, 500, 0, 0)]
     #[case(500, 500, 300, 400)]
-    #[case(fb().width, fb().height, 0, 0)]
-    #[case(fb().width - 1, fb().height - 1, 1, 1)]
+    #[case(fb().get_width(), fb().get_height(), 0, 0)]
+    #[case(fb().get_width() - 1, fb().get_height() - 1, 1, 1)]
     #[tokio::test]
     async fn test_drawing_rect(
         #[case] width: usize,
@@ -265,7 +265,7 @@ mod test {
         let mut read_other_pixels_commands = String::new();
         let mut read_other_pixels_commands_expected = String::new();
 
-        for x in 0..fb.width {
+        for x in 0..fb.get_width() {
             for y in 0..height {
                 // Inside the rect
                 if x >= offset_x && x <= offset_x + width && y >= offset_y && y <= offset_y + height

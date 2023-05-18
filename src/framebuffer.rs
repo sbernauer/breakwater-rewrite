@@ -1,12 +1,12 @@
 use std::cell::UnsafeCell;
 
 pub struct FrameBuffer {
-    pub width: usize,
-    pub height: usize,
+    width: usize,
+    height: usize,
     buffer: UnsafeCell<Vec<u32>>,
 }
 
-// Nothing to see here, I don't know what I'm doing ¯\_(ツ)_/¯
+// FIXME Nothing to see here, I don't know what I'm doing ¯\_(ツ)_/¯
 unsafe impl Sync for FrameBuffer {}
 
 impl FrameBuffer {
@@ -20,6 +20,18 @@ impl FrameBuffer {
         }
     }
 
+    pub fn get_width(&self) -> usize {
+        self.width
+    }
+
+    pub fn get_height(&self) -> usize {
+        self.height
+    }
+
+    pub fn get_size(&self) -> usize {
+        self.width * self.height
+    }
+
     #[inline(always)]
     pub fn get(&self, x: usize, y: usize) -> Option<u32> {
         if x < self.width && y < self.height {
@@ -29,10 +41,10 @@ impl FrameBuffer {
         }
     }
 
-    // #[inline(always)]
-    // pub fn get_unchecked(&self, x: usize, y: usize) -> u32 {
-    //     unsafe { (*self.buffer.get())[x + y * self.width] }
-    // }
+    #[inline(always)]
+    pub fn get_unchecked(&self, x: usize, y: usize) -> u32 {
+        unsafe { (*self.buffer.get())[x + y * self.width] }
+    }
 
     #[inline(always)]
     pub fn set(&self, x: usize, y: usize, rgba: u32) {
@@ -41,5 +53,9 @@ impl FrameBuffer {
         if x < self.width && y < self.height {
             unsafe { (*self.buffer.get())[x + y * self.width] = rgba }
         }
+    }
+
+    pub fn get_buffer(&self) -> *mut Vec<u32> {
+        self.buffer.get()
     }
 }
