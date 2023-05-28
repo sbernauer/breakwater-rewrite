@@ -13,11 +13,11 @@ pub struct Args {
     pub vnc_port: u32,
 
     /// Width of the drawing surface.
-    #[clap(short, long, default_value_t = 1280)]
+    #[clap(long, default_value_t = 1280)]
     pub width: usize,
 
     /// Height of the drawing surface.
-    #[clap(short, long, default_value_t = 720)]
+    #[clap(long, default_value_t = 720)]
     pub height: usize,
 
     /// Frames per second the VNC server should aim for.

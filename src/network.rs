@@ -1,28 +1,43 @@
 use crate::{
     framebuffer::FrameBuffer,
     parser::{parse_pixelflut_commands, ParserState, PARSER_LOOKAHEAD},
+    statistics::StatisticsEvent,
 };
 use log::{debug, info};
 use std::{
     cmp::min,
     net::{IpAddr, Ipv4Addr},
     sync::Arc,
+    time::Duration,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
+    sync::mpsc::Sender,
+    time::Instant,
 };
 
 const NETWORK_BUFFER_SIZE: usize = 256_000;
+// Every client connection spawns a new thread, so we need to limit the number of stat events we send
+const STATISTICS_REPORT_INTERVAL: Duration = Duration::from_millis(250);
 
 pub struct Network {
     listen_address: String,
     fb: Arc<FrameBuffer>,
+    statistics_tx: Sender<StatisticsEvent>,
 }
 
 impl Network {
-    pub fn new(listen_address: String, fb: Arc<FrameBuffer>) -> Self {
-        Network { listen_address, fb }
+    pub fn new(
+        listen_address: String,
+        fb: Arc<FrameBuffer>,
+        statistics_tx: Sender<StatisticsEvent>,
+    ) -> Self {
+        Network {
+            listen_address,
+            fb,
+            statistics_tx,
+        }
     }
 
     pub async fn listen(&self) -> tokio::io::Result<()> {
@@ -36,8 +51,9 @@ impl Network {
             let ip = ip_to_canonical(socket_addr.ip());
 
             let fb_for_thread = Arc::clone(&self.fb);
+            let statistics_tx_for_thread = self.statistics_tx.clone();
             tokio::spawn(async move {
-                handle_connection(socket, ip, fb_for_thread).await;
+                handle_connection(socket, ip, fb_for_thread, statistics_tx_for_thread).await;
             });
         }
     }
@@ -47,14 +63,27 @@ pub async fn handle_connection(
     mut stream: impl AsyncReadExt + AsyncWriteExt + Unpin,
     ip: IpAddr,
     fb: Arc<FrameBuffer>,
+    statistics_tx: Sender<StatisticsEvent>,
 ) {
     debug!("Handling connection from {ip}");
+
+    statistics_tx
+        .send(StatisticsEvent::ConnectionCreated { ip })
+        .await
+        .expect("Statistics channel disconnected");
+
+    // TODO: Try performance of Vec<> on heap instead of stack. Also bigger buffer
     let mut buffer = [0u8; NETWORK_BUFFER_SIZE];
     // Number bytes left over **on the first bytes of the buffer** from the previous loop iteration
     let mut leftover_bytes_in_buffer = 0;
 
     // We have to keep the some things - such as connection offset - for the whole connection lifetime, so let's define them here
     let mut parser_state = ParserState::default();
+
+    // If we send e.g. an StatisticsEvent::BytesRead for every time we read something from the socket the statistics thread would go crazy.
+    // Instead we bulk the statistics and send them pre-aggregated.
+    let mut last_statistics = Instant::now();
+    let mut statistics_bytes_read: u64 = 0;
 
     loop {
         // Fill the buffer up with new data from the socket
@@ -65,19 +94,31 @@ pub async fn handle_connection(
         {
             Ok(bytes_read) => bytes_read,
             Err(_) => {
-                // statistics.dec_connections(ip);
                 break;
             }
         };
 
-        // statistics.inc_bytes(ip, bytes as u64);
+        statistics_bytes_read += bytes_read as u64;
+        if last_statistics.elapsed() > STATISTICS_REPORT_INTERVAL {
+            statistics_tx
+                // We use a blocking call here as we want to process the stats.
+                // Otherwise the stats will lag behind resulting in weird spikes in bytes/s statistics.
+                // As the statistics calculation should be trivial let's wait for it
+                .send(StatisticsEvent::BytesRead {
+                    ip,
+                    bytes: statistics_bytes_read,
+                })
+                .await
+                .expect("Statistics channel disconnected");
+            last_statistics = Instant::now();
+            statistics_bytes_read = 0;
+        }
 
         let data_end = leftover_bytes_in_buffer + bytes_read;
         if bytes_read == 0 {
             if leftover_bytes_in_buffer == 0 {
                 // We read no data and the previous loop did consume all data
                 // Nothing to do here, closing connection
-                // statistics.dec_connections(ip);
                 break;
             }
 
@@ -99,15 +140,9 @@ pub async fn handle_connection(
             )
             .await;
 
-            // dbg!(data_end, parser_state.last_byte_parsed);
-            // dbg!(std::str::from_utf8(
-            //     &buffer[parser_state.last_byte_parsed..data_end + PARSER_LOOKAHEAD]
-            // )
-            // .unwrap());
-
             // IMPORTANT: We have to subtract 1 here, as e.g. we have "PX 0 0\n" data_end is 7 and parser_state.last_byte_parsed is 6.
             // This happens, because last_byte_parsed is an index starting at 0, so index 6 is from an array of length 7
-            leftover_bytes_in_buffer = data_end - parser_state.last_byte_parsed - 1;
+            leftover_bytes_in_buffer = data_end - parser_state.last_byte_parsed() - 1;
 
             // There is no need to leave anything longer than a command can take
             // This prevents malicious clients from sending gibberish and the buffer not getting drained
@@ -115,21 +150,19 @@ pub async fn handle_connection(
         }
 
         if leftover_bytes_in_buffer > 0 {
-            // dbg!(std::str::from_utf8(&buffer[..30]).unwrap());
             // We need to move the leftover bytes to the beginning of the buffer so that the next loop iteration con work on them
-            // dbg!(std::str::from_utf8(
-            //     &buffer[parser_state.last_byte_parsed + 1
-            //         ..parser_state.last_byte_parsed + 1 + leftover_bytes_in_buffer]
-            // )
-            // .unwrap());
             buffer.copy_within(
-                parser_state.last_byte_parsed + 1
-                    ..parser_state.last_byte_parsed + 1 + leftover_bytes_in_buffer,
+                parser_state.last_byte_parsed() + 1
+                    ..parser_state.last_byte_parsed() + 1 + leftover_bytes_in_buffer,
                 0,
             );
-            // dbg!(std::str::from_utf8(&buffer[..30]).unwrap());
         }
     }
+
+    statistics_tx
+        .send(StatisticsEvent::ConnectionClosed { ip })
+        .await
+        .expect("Statistics channel disconnected");
 }
 
 /// TODO: Switch to official ip.to_canonical() method when it is stable. **If** it gets stable sometime ;)
@@ -152,6 +185,12 @@ mod test {
     use crate::test::helpers::MockTcpStream;
     use rstest::{fixture, rstest};
     use std::time::Duration;
+    use tokio::sync::mpsc::{self, Receiver};
+
+    #[fixture]
+    fn ip() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
+    }
 
     #[fixture]
     fn fb() -> Arc<FrameBuffer> {
@@ -159,8 +198,8 @@ mod test {
     }
 
     #[fixture]
-    fn ip() -> IpAddr {
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
+    fn statistics_channel() -> (Sender<StatisticsEvent>, Receiver<StatisticsEvent>) {
+        mpsc::channel(10000)
     }
 
     #[rstest]
@@ -180,11 +219,12 @@ mod test {
     async fn test_correct_responses_to_general_commands(
         #[case] input: &str,
         #[case] expected: &str,
-        fb: Arc<FrameBuffer>,
         ip: IpAddr,
+        fb: Arc<FrameBuffer>,
+        statistics_channel: (Sender<StatisticsEvent>, Receiver<StatisticsEvent>),
     ) {
         let mut stream = MockTcpStream::from_input(input);
-        handle_connection(&mut stream, ip, fb).await;
+        handle_connection(&mut stream, ip, fb, statistics_channel.0).await;
 
         assert_eq!(expected, stream.get_output());
     }
@@ -223,11 +263,12 @@ mod test {
     async fn test_setting_pixel(
         #[case] input: &str,
         #[case] expected: &str,
-        fb: Arc<FrameBuffer>,
         ip: IpAddr,
+        fb: Arc<FrameBuffer>,
+        statistics_channel: (Sender<StatisticsEvent>, Receiver<StatisticsEvent>),
     ) {
         let mut stream = MockTcpStream::from_input(input);
-        handle_connection(&mut stream, ip, fb).await;
+        handle_connection(&mut stream, ip, fb, statistics_channel.0).await;
 
         assert_eq!(expected, stream.get_output());
     }
@@ -254,8 +295,9 @@ mod test {
         #[case] height: usize,
         #[case] offset_x: usize,
         #[case] offset_y: usize,
-        fb: Arc<FrameBuffer>,
         ip: IpAddr,
+        fb: Arc<FrameBuffer>,
+        statistics_channel: (Sender<StatisticsEvent>, Receiver<StatisticsEvent>),
     ) {
         let mut color: u32 = 0;
         let mut fill_commands = String::new();
@@ -288,22 +330,46 @@ mod test {
 
         // Color the pixels
         let mut stream = MockTcpStream::from_input(&fill_commands);
-        handle_connection(&mut stream, ip, Arc::clone(&fb)).await;
+        handle_connection(
+            &mut stream,
+            ip,
+            Arc::clone(&fb),
+            statistics_channel.0.clone(),
+        )
+        .await;
         assert_eq!("", stream.get_output());
 
         // Read the pixels again
         let mut stream = MockTcpStream::from_input(&read_commands);
-        handle_connection(&mut stream, ip, Arc::clone(&fb)).await;
+        handle_connection(
+            &mut stream,
+            ip,
+            Arc::clone(&fb),
+            statistics_channel.0.clone(),
+        )
+        .await;
         assert_eq!(fill_commands, stream.get_output());
 
         // We can also do coloring and reading in a single connection
         let mut stream = MockTcpStream::from_input(&combined_commands);
-        handle_connection(&mut stream, ip, Arc::clone(&fb)).await;
+        handle_connection(
+            &mut stream,
+            ip,
+            Arc::clone(&fb),
+            statistics_channel.0.clone(),
+        )
+        .await;
         assert_eq!(combined_commands_expected, stream.get_output());
 
         // Check that nothing else was colored
         let mut stream = MockTcpStream::from_input(&read_other_pixels_commands);
-        handle_connection(&mut stream, ip, Arc::clone(&fb)).await;
+        handle_connection(
+            &mut stream,
+            ip,
+            Arc::clone(&fb),
+            statistics_channel.0.clone(),
+        )
+        .await;
         assert_eq!(read_other_pixels_commands_expected, stream.get_output());
     }
 }

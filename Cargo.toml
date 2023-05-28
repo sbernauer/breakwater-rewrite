@@ -4,15 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "3.2", features = ["derive"] }
+clap = { version = "4.3", features = ["derive"] }
+rusttype = "0.9"
+number_prefix = "0.4"
 env_logger = "0.10"
+lazy_static = "1.4"
 log = "0.4"
 rstest = "0.17"
-tokio = { version = "1.28", features = ["rt-multi-thread", "net", "io-util", "macros", "time"] }
+simple_moving_average = "0.1"
+thread-priority = "0.13"
+tokio = { version = "1.28", features = ["rt-multi-thread", "net", "io-util", "macros", "sync", "time"] }
 vncserver = "0.2"
 
 [dev-dependencies]
-criterion = {version = "0.3", features = ["async_tokio"]}
+criterion = {version = "0.5", features = ["async_tokio"]}
 
 [lib]
 name = "breakwater"
