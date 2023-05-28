@@ -8,7 +8,7 @@ use std::{
 use tokio::sync::{broadcast, mpsc::Receiver};
 
 pub const STATS_REPORT_INTERVAL: Duration = Duration::from_millis(1000);
-pub const STATS_SLIDING_WINDOW_SIZE: usize = 3;
+pub const STATS_SLIDING_WINDOW_SIZE: usize = 5;
 
 #[derive(Debug)]
 pub enum StatisticsEvent {
@@ -28,6 +28,9 @@ pub struct StatisticsInformationEvent {
     pub fps: u64,
     pub bytes_per_s: u64,
 
+    pub connections_for_ip: HashMap<IpAddr, u32>,
+    pub bytes_for_ip: HashMap<IpAddr, u64>,
+
     pub statistic_events: u64,
 }
 
@@ -39,7 +42,9 @@ pub struct Statistics {
     frame: u64,
     connections_for_ip: HashMap<IpAddr, u32>,
     bytes_for_ip: HashMap<IpAddr, u64>,
-    bytes_per_s_windows: SingleSumSMA<u64, u64, STATS_SLIDING_WINDOW_SIZE>,
+
+    bytes_per_s_window: SingleSumSMA<u64, u64, STATS_SLIDING_WINDOW_SIZE>,
+    fps_window: SingleSumSMA<u64, u64, STATS_SLIDING_WINDOW_SIZE>,
 }
 
 impl Statistics {
@@ -47,14 +52,15 @@ impl Statistics {
         statistics_rx: Receiver<StatisticsEvent>,
         statistics_information_tx: broadcast::Sender<StatisticsInformationEvent>,
     ) -> Self {
-        Self {
+        Statistics {
             statistics_rx,
             statistics_information_tx,
             statistic_events: 0,
             frame: 0,
             connections_for_ip: HashMap::new(),
             bytes_for_ip: HashMap::new(),
-            bytes_per_s_windows: SingleSumSMA::new(),
+            bytes_per_s_window: SingleSumSMA::new(),
+            fps_window: SingleSumSMA::new(),
         }
     }
 
@@ -113,8 +119,10 @@ impl Statistics {
             .filter(|ip| ip.is_ipv4())
             .count() as u32;
         let bytes = self.bytes_for_ip.values().sum();
-        self.bytes_per_s_windows
+        self.bytes_per_s_window
             .add_sample((bytes - prev.bytes) * 1000 / elapsed_ms);
+        self.fps_window
+            .add_sample((frame - prev.frame) * 1000 / elapsed_ms);
         let statistic_events = self.statistic_events;
 
         StatisticsInformationEvent {
@@ -123,8 +131,10 @@ impl Statistics {
             ips,
             legacy_ips,
             bytes,
-            fps: (frame - prev.frame) * 1000 / elapsed_ms,
-            bytes_per_s: self.bytes_per_s_windows.get_average(),
+            fps: self.fps_window.get_average(),
+            bytes_per_s: self.bytes_per_s_window.get_average(),
+            connections_for_ip: self.connections_for_ip.clone(),
+            bytes_for_ip: self.bytes_for_ip.clone(),
             statistic_events,
         }
     }

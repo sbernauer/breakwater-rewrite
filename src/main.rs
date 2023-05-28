@@ -2,6 +2,7 @@ use breakwater::{
     args::Args,
     framebuffer::FrameBuffer,
     network::Network,
+    prometheus_exporter::PrometheusExporter,
     statistics::{Statistics, StatisticsEvent, StatisticsInformationEvent},
     vnc::VncServer,
 };
@@ -21,8 +22,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // If we make the channel to big, stats will start to lag behind
     // TODO: Check performance impact in real-world scenario. Maybe the statistics thread blocks the other threads
     let (statistics_tx, statistics_rx) = mpsc::channel::<StatisticsEvent>(100);
-    let (statistics_information_tx, statistics_information_rx) =
+    let (statistics_information_tx, statistics_information_rx_for_vnc_server) =
         broadcast::channel::<StatisticsInformationEvent>(2);
+    let statistics_information_rx_for_prometheus_exporter = statistics_information_tx.subscribe();
 
     let mut statistics = Statistics::new(statistics_rx, statistics_information_tx);
 
@@ -47,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     args.vnc_port,
                     args.fps,
                     statistics_tx,
-                    statistics_information_rx,
+                    statistics_information_rx_for_vnc_server,
                     &args.text,
                     &args.font,
                 );
@@ -60,6 +62,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         statistics.start().await;
     });
 
+    let mut prometheus_exporter = PrometheusExporter::new(
+        &args.prometheus_listen_address,
+        statistics_information_rx_for_prometheus_exporter,
+    );
+    let prometheus_exporter_thread = tokio::spawn(async move {
+        prometheus_exporter.run().await;
+    });
+
+    prometheus_exporter_thread.await?;
     network_listener_thread.await?;
     statistics_thread.await?;
     vnc_server_thread
