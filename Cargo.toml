@@ -15,10 +15,14 @@ rstest = "0.17"
 simple_moving_average = "0.1"
 thread-priority = "0.13"
 tokio = { version = "1.28", features = ["rt-multi-thread", "net", "io-util", "macros", "signal", "sync", "time"] }
-vncserver = "0.2"
+vncserver = { version ="0.2", optional = true}
 
 [dev-dependencies]
 criterion = {version = "0.5", features = ["async_tokio"]}
+
+[features]
+default = ["vnc"]
+vnc = ["dep:vncserver"]
 
 [lib]
 name = "breakwater"

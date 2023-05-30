@@ -1,19 +1,18 @@
+#[cfg(feature = "vnc")]
+use breakwater::sinks::vnc::VncServer;
 use breakwater::{
     args::Args,
     framebuffer::FrameBuffer,
     network::Network,
     prometheus_exporter::PrometheusExporter,
-    sinks::vnc::VncServer,
     statistics::{Statistics, StatisticsEvent, StatisticsInformationEvent},
 };
 use clap::Parser;
 use env_logger::Env;
 use std::sync::Arc;
+#[cfg(feature = "vnc")]
 use thread_priority::{ThreadBuilderExt, ThreadPriority};
-use tokio::{
-    signal,
-    sync::{broadcast, mpsc},
-};
+use tokio::sync::{broadcast, mpsc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,9 +24,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // If we make the channel to big, stats will start to lag behind
     // TODO: Check performance impact in real-world scenario. Maybe the statistics thread blocks the other threads
     let (statistics_tx, statistics_rx) = mpsc::channel::<StatisticsEvent>(100);
-    let (statistics_information_tx, statistics_information_rx_for_vnc_server) =
+    let (statistics_information_tx, statistics_information_rx_for_prometheus_exporter) =
         broadcast::channel::<StatisticsInformationEvent>(2);
-    let statistics_information_rx_for_prometheus_exporter = statistics_information_tx.subscribe();
+    #[cfg(feature = "vnc")]
+    let statistics_information_rx_for_vnc_server = statistics_information_tx.subscribe();
 
     let mut statistics = Statistics::new(statistics_rx, statistics_information_tx);
 
@@ -38,11 +38,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         network.listen().await.unwrap();
     });
 
-    let fb_for_vnc_server = Arc::clone(&fb);
-    // TODO Use tokio::spawn instead of std::thread::spawn
-    // I was not able to get to work with async closure
-    // We than also need to think about setting a priority
-    let vnc_server_thread = std::thread::Builder::new()
+    #[cfg(feature = "vnc")]
+    let vnc_server_thread = {
+        let fb_for_vnc_server = Arc::clone(&fb);
+        // TODO Use tokio::spawn instead of std::thread::spawn
+        // I was not able to get to work with async closure
+        // We than also need to think about setting a priority
+        std::thread::Builder::new()
         .name("breakwater vnc server thread".to_owned())
         .spawn_with_priority(
             ThreadPriority::Crossplatform(70.try_into().expect("Failed to get cross-platform ThreadPriority. Please report this error message together with your operating system.")),
@@ -59,7 +61,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 vnc_server.run();
             },
         )
-        .unwrap();
+        .unwrap()
+    };
 
     let statistics_thread = tokio::spawn(async move {
         statistics.start().await;
@@ -73,14 +76,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         prometheus_exporter.run().await;
     });
 
-    signal::ctrl_c().await?;
-
     prometheus_exporter_thread.await?;
     network_listener_thread.await?;
     statistics_thread.await?;
-    vnc_server_thread
-        .join()
-        .expect("Failed to join VNC server thread");
+    #[cfg(feature = "vnc")]
+    {
+        vnc_server_thread
+            .join()
+            .expect("Failed to join VNC server thread");
+    }
 
     Ok(())
 }

@@ -8,10 +8,6 @@ pub struct Args {
     #[clap(short, long, default_value = "[::]:1234")]
     pub listen_address: String,
 
-    /// Port of the VNC server.
-    #[clap(short, long, default_value_t = 5900)]
-    pub vnc_port: u32,
-
     /// Width of the drawing surface.
     #[clap(long, default_value_t = 1280)]
     pub width: usize,
@@ -20,7 +16,7 @@ pub struct Args {
     #[clap(long, default_value_t = 720)]
     pub height: usize,
 
-    /// Frames per second the VNC server should aim for.
+    /// Frames per second the server should aim for.
     #[clap(short, long, default_value_t = 30)]
     pub fps: u32,
 
@@ -52,4 +48,10 @@ pub struct Args {
     /// Disable periodical saving of statistics into save file.
     #[clap(long)]
     pub disable_statistics_save_file: bool,
+
+    /// Port of the VNC server.
+    // #[cfg_attr(feature = "vnc", clap(short, long, default_value_t = 5900))]
+    #[cfg(feature = "vnc")]
+    #[clap(short, long, default_value_t = 5900)]
+    pub vnc_port: u32,
 }
