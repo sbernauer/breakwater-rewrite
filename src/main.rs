@@ -3,14 +3,17 @@ use breakwater::{
     framebuffer::FrameBuffer,
     network::Network,
     prometheus_exporter::PrometheusExporter,
+    sinks::vnc::VncServer,
     statistics::{Statistics, StatisticsEvent, StatisticsInformationEvent},
-    vnc::VncServer,
 };
 use clap::Parser;
 use env_logger::Env;
 use std::sync::Arc;
 use thread_priority::{ThreadBuilderExt, ThreadPriority};
-use tokio::sync::{broadcast, mpsc};
+use tokio::{
+    signal,
+    sync::{broadcast, mpsc},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -69,6 +72,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let prometheus_exporter_thread = tokio::spawn(async move {
         prometheus_exporter.run().await;
     });
+
+    signal::ctrl_c().await?;
 
     prometheus_exporter_thread.await?;
     network_listener_thread.await?;

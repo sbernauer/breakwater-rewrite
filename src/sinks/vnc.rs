@@ -56,7 +56,7 @@ impl<'a> VncServer<'a> {
         let font = match font {
             // We ship our own copy of Arial.ttf, so that users don't need to download and provide it
             "Arial.ttf" => {
-                let font_bytes = include_bytes!("../Arial.ttf");
+                let font_bytes = include_bytes!("../../Arial.ttf");
                 Font::try_from_bytes(font_bytes)
                     .unwrap_or_else(|| panic!("Failed to construct Font from Arial.ttf"))
             }
