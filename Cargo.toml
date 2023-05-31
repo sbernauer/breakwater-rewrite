@@ -14,7 +14,7 @@ prometheus_exporter = "0.8"
 rstest = "0.17"
 simple_moving_average = "0.1"
 thread-priority = "0.13"
-tokio = { version = "1.28", features = ["rt-multi-thread", "net", "io-util", "macros", "signal", "sync", "time"] }
+tokio = { version = "1.28", features = ["rt-multi-thread", "net", "io-util", "macros", "process", "sync", "time"] }
 vncserver = { version ="0.2", optional = true}
 
 [dev-dependencies]

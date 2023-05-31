@@ -5,6 +5,7 @@ use breakwater::{
     framebuffer::FrameBuffer,
     network::Network,
     prometheus_exporter::PrometheusExporter,
+    sinks::ffmpeg::FfmpegSink,
     statistics::{Statistics, StatisticsEvent, StatisticsInformationEvent},
 };
 use clap::Parser;
@@ -31,11 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut statistics = Statistics::new(statistics_rx, statistics_information_tx);
 
-    let fb_for_network = Arc::clone(&fb);
-    let network = Network::new(args.listen_address, fb_for_network, statistics_tx.clone());
-
+    let network = Network::new(args.listen_address, Arc::clone(&fb), statistics_tx.clone());
     let network_listener_thread = tokio::spawn(async move {
         network.listen().await.unwrap();
+    });
+
+    let ffmpeg_sink = FfmpegSink::new(Arc::clone(&fb));
+    let ffmpeg_thread = tokio::spawn(async move {
+        ffmpeg_sink.run().await.unwrap();
     });
 
     #[cfg(feature = "vnc")]
@@ -78,6 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     prometheus_exporter_thread.await?;
     network_listener_thread.await?;
+    ffmpeg_thread.await?;
     statistics_thread.await?;
     #[cfg(feature = "vnc")]
     {

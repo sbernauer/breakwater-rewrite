@@ -1,4 +1,4 @@
-use std::cell::UnsafeCell;
+use std::{cell::UnsafeCell, slice};
 
 pub struct FrameBuffer {
     width: usize,
@@ -42,11 +42,6 @@ impl FrameBuffer {
     }
 
     #[inline(always)]
-    pub fn get_unchecked(&self, x: usize, y: usize) -> u32 {
-        unsafe { (*self.buffer.get())[x + y * self.width] }
-    }
-
-    #[inline(always)]
     pub fn set(&self, x: usize, y: usize, rgba: u32) {
         // TODO: If we make the FrameBuffer large enough (e.g. 10_000 x 10_000) we don't need to check the bounds here (x and y are max 4 digit numbers).
         // (flamegraph has shown 5.21% of runtime in this bound check O.o)
@@ -57,5 +52,12 @@ impl FrameBuffer {
 
     pub fn get_buffer(&self) -> *mut Vec<u32> {
         self.buffer.get()
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        let buffer = self.buffer.get();
+        let len_in_bytes: usize = unsafe { (*buffer).len() } * 4;
+
+        unsafe { slice::from_raw_parts((*buffer).as_ptr() as *const u8, len_in_bytes) }
     }
 }
