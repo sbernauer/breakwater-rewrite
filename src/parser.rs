@@ -54,7 +54,7 @@ pub async fn parse_pixelflut_commands(
 
     while i < loop_end {
         // Check for buffer[i] = "PX "
-        if unsafe { *(buffer.as_ptr().add(i) as *const u32) } & 0x00ff_ffff
+        if unsafe { (buffer.as_ptr().add(i) as *const u32).read_unaligned() } & 0x00ff_ffff
             == 0x50582000_u32.swap_bytes()
         {
             i += 3;
@@ -207,7 +207,8 @@ pub async fn parse_pixelflut_commands(
                 }
             }
         // Check for buffer[i] = "SIZE"
-        } else if unsafe { *(buffer.as_ptr().add(i) as *const u32) } == 0x53495a45_u32.swap_bytes()
+        } else if unsafe { (buffer.as_ptr().add(i) as *const u32).read_unaligned() }
+            == 0x53495a45_u32.swap_bytes()
         {
             i += 4;
             last_byte_parsed = i - 1;
@@ -218,7 +219,8 @@ pub async fn parse_pixelflut_commands(
                 .expect("Failed to write bytes to tcp socket");
             continue;
         // Check for buffer[i] = "HELP"
-        } else if unsafe { *(buffer.as_ptr().add(i) as *const u32) } == 0x48454c50_u32.swap_bytes()
+        } else if unsafe { (buffer.as_ptr().add(i) as *const u32).read_unaligned() }
+            == 0x48454c50_u32.swap_bytes()
         {
             i += 4;
             last_byte_parsed = i - 1;
@@ -229,7 +231,8 @@ pub async fn parse_pixelflut_commands(
                 .expect("Failed to write bytes to tcp socket");
             continue;
         // Check for buffer[i] = "OFFSET "
-        } else if unsafe { *(buffer.as_ptr().add(i) as *const u64) } & 0x0000_ffff_ffff_ffff
+        } else if unsafe { (buffer.as_ptr().add(i) as *const u64).read_unaligned() }
+            & 0x0000_ffff_ffff_ffff
             == 0x4f464653455420_u64.swap_bytes()
         {
             i += 7;
