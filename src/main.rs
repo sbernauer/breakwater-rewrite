@@ -1,12 +1,11 @@
 #[cfg(feature = "vnc")]
-use breakwater::sinks::vnc::VncServer;
 use breakwater::{
     args::Args,
     framebuffer::FrameBuffer,
     network::Network,
     prometheus_exporter::PrometheusExporter,
-    sinks::ffmpeg::FfmpegSink,
-    statistics::{Statistics, StatisticsEvent, StatisticsInformationEvent},
+    sinks::{ffmpeg::FfmpegSink, vnc::VncServer},
+    statistics::{Statistics, StatisticsEvent, StatisticsInformationEvent, StatisticsSaveMode},
 };
 use clap::Parser;
 use env_logger::Env;
@@ -30,7 +29,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "vnc")]
     let statistics_information_rx_for_vnc_server = statistics_information_tx.subscribe();
 
-    let mut statistics = Statistics::new(statistics_rx, statistics_information_tx);
+    let statistics_save_mode = if args.disable_statistics_save_file {
+        StatisticsSaveMode::Disabled
+    } else {
+        StatisticsSaveMode::Enabled {
+            save_file: args.statistics_save_file,
+            interval_s: args.statistics_save_interval_s,
+        }
+    };
+    let mut statistics = Statistics::new(
+        statistics_rx,
+        statistics_information_tx,
+        statistics_save_mode,
+    )?;
 
     let network = Network::new(args.listen_address, Arc::clone(&fb), statistics_tx.clone());
     let network_listener_thread = tokio::spawn(async move {
@@ -68,9 +79,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap()
     };
 
-    let statistics_thread = tokio::spawn(async move {
-        statistics.start().await;
-    });
+    let statistics_thread =
+        tokio::spawn(async move { statistics.start().await.expect("Statistics thread failed") });
 
     let mut prometheus_exporter = PrometheusExporter::new(
         &args.prometheus_listen_address,

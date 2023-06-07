@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
 use simple_moving_average::{SingleSumSMA, SMA};
 use std::{
     cmp::max,
     collections::{hash_map::Entry, HashMap},
+    fs::File,
     net::IpAddr,
     time::{Duration, Instant},
 };
@@ -18,7 +20,12 @@ pub enum StatisticsEvent {
     FrameRendered,
 }
 
-#[derive(Clone, Debug, Default)]
+pub enum StatisticsSaveMode {
+    Disabled,
+    Enabled { save_file: String, interval_s: u64 },
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct StatisticsInformationEvent {
     pub frame: u64,
     pub connections: u32,
@@ -45,14 +52,33 @@ pub struct Statistics {
 
     bytes_per_s_window: SingleSumSMA<u64, u64, STATS_SLIDING_WINDOW_SIZE>,
     fps_window: SingleSumSMA<u64, u64, STATS_SLIDING_WINDOW_SIZE>,
+
+    statistics_save_mode: StatisticsSaveMode,
+}
+
+impl StatisticsInformationEvent {
+    fn save_to_file(&self, file_name: &str) -> std::io::Result<()> {
+        // TODO Check if we can use tokio's File here. This needs some integration with serde_json though
+        // This operation is also called very infrequently
+        let file = File::create(file_name)?;
+        serde_json::to_writer(file, &self)?;
+
+        Ok(())
+    }
+
+    fn load_from_file(file_name: &str) -> std::io::Result<Self> {
+        let file = File::open(file_name)?;
+        Ok(serde_json::from_reader(file)?)
+    }
 }
 
 impl Statistics {
     pub fn new(
         statistics_rx: Receiver<StatisticsEvent>,
         statistics_information_tx: broadcast::Sender<StatisticsInformationEvent>,
-    ) -> Self {
-        Statistics {
+        statistics_save_mode: StatisticsSaveMode,
+    ) -> std::io::Result<Self> {
+        let mut statistics = Statistics {
             statistics_rx,
             statistics_information_tx,
             statistic_events: 0,
@@ -61,12 +87,24 @@ impl Statistics {
             bytes_for_ip: HashMap::new(),
             bytes_per_s_window: SingleSumSMA::new(),
             fps_window: SingleSumSMA::new(),
+            statistics_save_mode,
+        };
+
+        if let StatisticsSaveMode::Enabled { save_file, .. } = &statistics.statistics_save_mode {
+            let statistics_information_event =
+                StatisticsInformationEvent::load_from_file(save_file)?;
+            statistics.statistic_events = statistics_information_event.statistic_events;
+            statistics.frame = statistics_information_event.frame;
+            statistics.bytes_for_ip = statistics_information_event.bytes_for_ip;
         }
+
+        Ok(statistics)
     }
 
-    pub async fn start(&mut self) {
-        let mut start = Instant::now();
-        let mut prev_statistics_information_event = StatisticsInformationEvent::default();
+    pub async fn start(&mut self) -> std::io::Result<()> {
+        let mut last_stat_report = Instant::now();
+        let mut last_save_file_written = Instant::now();
+        let mut statistics_information_event = StatisticsInformationEvent::default();
 
         while let Some(statistics_update) = self.statistics_rx.recv().await {
             self.statistic_events += 1;
@@ -90,23 +128,36 @@ impl Statistics {
             }
 
             // As there is an event for every frame we are guaranteed to land here every second
-            let elapsed = start.elapsed();
-            if elapsed > STATS_REPORT_INTERVAL {
-                start = Instant::now();
-                prev_statistics_information_event = self.calculate_statistics_information_event(
-                    prev_statistics_information_event,
-                    elapsed,
+            let last_stat_report_elapsed = last_stat_report.elapsed();
+            if last_stat_report_elapsed > STATS_REPORT_INTERVAL {
+                last_stat_report = Instant::now();
+                statistics_information_event = self.calculate_statistics_information_event(
+                    &statistics_information_event,
+                    last_stat_report_elapsed,
                 );
                 self.statistics_information_tx
-                    .send(prev_statistics_information_event.clone())
+                    .send(statistics_information_event.clone())
                     .expect("Statistics information channel full (or disconnected)");
+
+                if let StatisticsSaveMode::Enabled {
+                    save_file,
+                    interval_s,
+                } = &self.statistics_save_mode
+                {
+                    if last_save_file_written.elapsed() > Duration::from_secs(*interval_s) {
+                        last_save_file_written = Instant::now();
+                        statistics_information_event.save_to_file(save_file)?;
+                    }
+                }
             }
         }
+
+        Ok(())
     }
 
     fn calculate_statistics_information_event(
         &mut self,
-        prev: StatisticsInformationEvent,
+        prev: &StatisticsInformationEvent,
         elapsed: Duration,
     ) -> StatisticsInformationEvent {
         let elapsed_ms = max(1, elapsed.as_millis()) as u64;
