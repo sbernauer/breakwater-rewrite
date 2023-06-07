@@ -146,6 +146,8 @@ dependencies = [
  "prometheus_exporter",
  "rstest",
  "rusttype",
+ "serde",
+ "serde_json",
  "simple_moving_average",
  "thread-priority",
  "tokio",

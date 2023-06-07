@@ -1,5 +1,6 @@
 /target
 .vscode/
+statistics.json
 flamegraph.svg
 perf.data
 perf.data.old

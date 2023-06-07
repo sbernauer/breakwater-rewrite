@@ -5,7 +5,7 @@ use breakwater::{
     framebuffer::FrameBuffer,
     network::Network,
     prometheus_exporter::PrometheusExporter,
-    statistics::{Statistics, StatisticsEvent, StatisticsInformationEvent},
+    statistics::{Statistics, StatisticsEvent, StatisticsInformationEvent, StatisticsSaveMode},
 };
 use clap::Parser;
 use env_logger::Env;
@@ -29,7 +29,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "vnc")]
     let statistics_information_rx_for_vnc_server = statistics_information_tx.subscribe();
 
-    let mut statistics = Statistics::new(statistics_rx, statistics_information_tx);
+    let statistics_save_mode = if args.disable_statistics_save_file {
+        StatisticsSaveMode::Disabled
+    } else {
+        StatisticsSaveMode::Enabled {
+            save_file: args.statistics_save_file,
+            interval_s: args.statistics_save_interval_s,
+        }
+    };
+    let mut statistics = Statistics::new(
+        statistics_rx,
+        statistics_information_tx,
+        statistics_save_mode,
+    )?;
 
     let fb_for_network = Arc::clone(&fb);
     let network = Network::new(args.listen_address, fb_for_network, statistics_tx.clone());
@@ -64,9 +76,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap()
     };
 
-    let statistics_thread = tokio::spawn(async move {
-        statistics.start().await;
-    });
+    let statistics_thread =
+        tokio::spawn(async move { statistics.start().await.expect("Statistics thread failed") });
 
     let mut prometheus_exporter = PrometheusExporter::new(
         &args.prometheus_listen_address,
