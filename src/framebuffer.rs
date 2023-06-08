@@ -45,16 +45,17 @@ impl FrameBuffer {
 
     #[inline(always)]
     pub fn set(&self, x: usize, y: usize, rgba: u32) {
-        // TODO: If we make the FrameBuffer large enough (e.g. 10_000 x 10_000) we don't need to check the bounds here (x and y are max 4 digit numbers).
-        // (flamegraph has shown 5.21% of runtime in this bound check O.o)
+        // This function is using ~1% according to a flamegraph
         unsafe { (*self.buffer.get())[x + (y  << 14)] = rgba }
     }
 
     pub fn get_buffer(&self) -> *mut Vec<u32> {
+        // TODO: rewrite for oversized framebuffer
         self.buffer.get()
     }
 
     pub fn as_bytes(&self) -> &[u8] {
+        // TODO: rewrite for oversized framebuffer
         let buffer = self.buffer.get();
         let len_in_bytes: usize = unsafe { (*buffer).len() } * 4;
 
