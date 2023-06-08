@@ -1,5 +1,6 @@
 use std::{process::Stdio, sync::Arc, time::Duration};
 
+use log::debug;
 use tokio::{io::AsyncWriteExt, process::Command, time};
 
 use crate::framebuffer::FrameBuffer;
@@ -13,15 +14,11 @@ impl FfmpegSink {
         FfmpegSink { fb }
     }
 
-    pub async fn run(&self) -> tokio::io::Result<()> {
-        let width = self.fb.get_width();
-        let height = self.fb.get_height();
-        let video_size: String = format!("{width}x{height}");
+    pub async fn run(&self, rtmp_address: &str) -> tokio::io::Result<()> {
+        let video_size: String = format!("{}x{}", self.fb.get_width(), self.fb.get_height());
 
-        // ffmpeg -re -stream_loop -1 -i simplescreenrecorder_2.mp4 -pix_fmt yuvj420p -x264-params keyint=48:min-keyint=48:scenecut=-1 -b:v 4500k -b:a 128k -ar 44100 -acodec aac -vcodec libx264 -preset medium -crf 28 -threads 4 -f flv rtmp://a.rtmp.youtube.com/live2/XXX
-        // ffmpeg -re -stream_loop -1 -i simplescreenrecorder-2022-07-07_21.57.20.mp4 -c:a copy -c:v copy -f flv -flvflags no_duration_filesize rtmp://127.0.0.1:1935/live/test
-
-        let args = [
+        let ffmpeg_args = [
+            // Video input
             "-f",
             "rawvideo",
             "-pixel_format",
@@ -30,53 +27,56 @@ impl FfmpegSink {
             &video_size,
             "-i",
             "-",
+            // Audio input
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=channel_layout=stereo:sample_rate=44100",
+            // Output
             "-vcodec",
             "libx264",
-            // "-profile:v",
-            // "high",
-            // "-preset",
-            // "veryfast",
-            // "-crf",
-            // "25",
-            // "-g",
-            // "60", // FIXME
+            "-acodec",
+            "aac",
+            "-pix_fmt",
+            "yuv420p",
+            "-x264-params",
+            "keyint=48:min-keyint=48:scenecut=-1",
+            "-preset",
+            "fast", // ultrafast, superfast, veryfast, faster, fast, medium – default preset, slow, slower, veryslow
+            "-crf",
+            "28",
+            "-r",
+            "30",
+            "-g",
+            "60",
+            "-ar",
+            "44100",
+            "-b:v",
+            "4500k",
+            "-b:a",
+            "128k",
+            "-threads",
+            "8",
             "-f",
             "flv",
-            "-flvflags",
-            "no_duration_filesize",
-            "rtmp://127.0.0.1:1935/live/test",
+            rtmp_address,
         ];
-        println!("ffmpeg {}", args.join(" "));
+        debug!("ffmpeg {}", ffmpeg_args.join(" "));
         let mut command = Command::new("ffmpeg")
-            .args(args)
+            .args(ffmpeg_args)
             .stdin(Stdio::piped())
             .spawn()
             .unwrap();
-        // command.wait().await?;
-
-        // const ffmpegRTMPArgs =[
-        // 	'-vcodec', 'libx264',
-        // 	'-profile:v', 'high',
-        // 	'-preset', 'veryfast',
-        // 	'-crf', '25',
-        // 	'-g', `${this.config.videoDestination.framerate * 2}`, // group of pictures forces an I-Frame every so-and-so frames.
-        // 	'-f', 'flv',
-        // 	'-flvflags', 'no_duration_filesize',
-        // 	this.
 
         let mut stdin = command
             .stdin
             .take()
             .expect("child did not have a handle to stdin");
 
-        // let mut interval = time::interval(Duration::from_nanos(1_000_000_000 / 30));
         let mut interval = time::interval(Duration::from_micros(1_000_000 / 30));
         loop {
             let bytes = self.fb.as_bytes();
-            // dbg!(bytes.len());
-            // dbg!(&bytes[0..50]);
             stdin.write_all(bytes).await?;
-            // println!("Finished writing");
             interval.tick().await;
         }
     }

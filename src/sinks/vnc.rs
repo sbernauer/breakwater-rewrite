@@ -80,7 +80,7 @@ impl<'a> VncServer<'a> {
     }
 
     pub fn run(&mut self) {
-        let target_loop_duration = Duration::from_millis(1_000 / self.target_fps as u64);
+        let target_loop_duration = Duration::from_micros(1_000_000 / self.target_fps as u64);
 
         let fb = &self.fb;
         let vnc_fb_slice: &mut [u32] = unsafe {

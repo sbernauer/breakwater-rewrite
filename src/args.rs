@@ -49,6 +49,17 @@ pub struct Args {
     #[clap(long)]
     pub disable_statistics_save_file: bool,
 
+    // Enable rtmp streaming to configured sink.
+    #[clap(long)]
+    pub rtmp: bool,
+
+    #[clap(
+        long,
+        // default_value = "-f rawvideo -pixel_format rgb0 -video_size 1280x720 -i - -vcodec libx264 -f flv -flvflags no_duration_filesize rtmp://127.0.0.1:1935/live/test"
+        default_value = "rtmp://127.0.0.1:1935/live/test"
+    )]
+    pub rtmp_address: String,
+
     /// Port of the VNC server.
     // #[cfg_attr(feature = "vnc", clap(short, long, default_value_t = 5900))]
     #[cfg(feature = "vnc")]

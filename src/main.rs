@@ -48,10 +48,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         network.listen().await.unwrap();
     });
 
-    let ffmpeg_sink = FfmpegSink::new(Arc::clone(&fb));
-    let ffmpeg_thread = tokio::spawn(async move {
-        ffmpeg_sink.run().await.unwrap();
-    });
+    let ffmpeg_thread = if args.rtmp {
+        let ffmpeg_sink = FfmpegSink::new(Arc::clone(&fb));
+        Some(tokio::spawn(async move {
+            ffmpeg_sink.run(&args.rtmp_address).await.unwrap();
+        }))
+    } else {
+        None
+    };
 
     #[cfg(feature = "vnc")]
     let vnc_server_thread = {
@@ -92,7 +96,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     prometheus_exporter_thread.await?;
     network_listener_thread.await?;
-    ffmpeg_thread.await?;
+    if let Some(ffmpeg_thread) = ffmpeg_thread {
+        ffmpeg_thread.await?;
+    }
     statistics_thread.await?;
     #[cfg(feature = "vnc")]
     {
