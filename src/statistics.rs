@@ -91,11 +91,11 @@ impl Statistics {
         };
 
         if let StatisticsSaveMode::Enabled { save_file, .. } = &statistics.statistics_save_mode {
-            let statistics_information_event =
-                StatisticsInformationEvent::load_from_file(save_file)?;
-            statistics.statistic_events = statistics_information_event.statistic_events;
-            statistics.frame = statistics_information_event.frame;
-            statistics.bytes_for_ip = statistics_information_event.bytes_for_ip;
+            if let Ok(save_point) = StatisticsInformationEvent::load_from_file(save_file) {
+                statistics.statistic_events = save_point.statistic_events;
+                statistics.frame = save_point.frame;
+                statistics.bytes_for_ip = save_point.bytes_for_ip;
+            }
         }
 
         Ok(statistics)
