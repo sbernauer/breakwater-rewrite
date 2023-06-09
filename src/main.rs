@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         StatisticsSaveMode::Disabled
     } else {
         StatisticsSaveMode::Enabled {
-            save_file: args.statistics_save_file,
+            save_file: args.statistics_save_file.clone(),
             interval_s: args.statistics_save_interval_s,
         }
     };
@@ -43,19 +43,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         statistics_save_mode,
     )?;
 
-    let network = Network::new(args.listen_address, Arc::clone(&fb), statistics_tx.clone());
+    let network = Network::new(&args.listen_address, Arc::clone(&fb), statistics_tx.clone());
     let network_listener_thread = tokio::spawn(async move {
         network.listen().await.unwrap();
     });
 
-    let ffmpeg_thread = if args.rtmp {
-        let ffmpeg_sink = FfmpegSink::new(Arc::clone(&fb));
-        Some(tokio::spawn(async move {
-            ffmpeg_sink.run(&args.rtmp_address).await.unwrap();
-        }))
-    } else {
-        None
-    };
+    let ffmpeg_sink = FfmpegSink::new(&args, Arc::clone(&fb));
+    let ffmpeg_thread =
+        ffmpeg_sink.map(|sink| tokio::spawn(async move { sink.run().await.unwrap() }));
 
     #[cfg(feature = "vnc")]
     let vnc_server_thread = {

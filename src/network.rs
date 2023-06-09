@@ -29,12 +29,12 @@ pub struct Network {
 
 impl Network {
     pub fn new(
-        listen_address: String,
+        listen_address: &str,
         fb: Arc<FrameBuffer>,
         statistics_tx: Sender<StatisticsEvent>,
     ) -> Self {
         Network {
-            listen_address,
+            listen_address: listen_address.to_string(),
             fb,
             statistics_tx,
         }

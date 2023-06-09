@@ -49,16 +49,13 @@ pub struct Args {
     #[clap(long)]
     pub disable_statistics_save_file: bool,
 
-    // Enable rtmp streaming to configured sink.
+    /// Enable rtmp streaming to configured address, e.g. `rtmp://127.0.0.1:1935/live/test`
     #[clap(long)]
-    pub rtmp: bool,
+    pub rtmp_address: Option<String>,
 
-    #[clap(
-        long,
-        // default_value = "-f rawvideo -pixel_format rgb0 -video_size 1280x720 -i - -vcodec libx264 -f flv -flvflags no_duration_filesize rtmp://127.0.0.1:1935/live/test"
-        default_value = "rtmp://127.0.0.1:1935/live/test"
-    )]
-    pub rtmp_address: String,
+    /// Enable dump of video stream into file. File name will be `pixelflut_dump_{timestamp}.mp4
+    #[clap(long)]
+    pub save_video_to_file: bool,
 
     /// Port of the VNC server.
     // #[cfg_attr(feature = "vnc", clap(short, long, default_value_t = 5900))]

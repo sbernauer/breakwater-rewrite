@@ -18,6 +18,7 @@ simple_moving_average = "0.1"
 thread-priority = "0.13"
 tokio = { version = "1.28", features = ["fs", "rt-multi-thread", "net", "io-util", "macros", "process", "signal", "sync", "time"] }
 vncserver = { version ="0.2", optional = true}
+chrono = "0.4.26"
 
 [dev-dependencies]
 criterion = {version = "0.5", features = ["async_tokio"]}
